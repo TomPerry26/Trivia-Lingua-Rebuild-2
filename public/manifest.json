@@ -1,0 +1,20 @@
+{
+  "name": "Trivia Lingua",
+  "short_name": "Trivia Lingua",
+  "description": "Learn Spanish through addictive trivia quizzes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/pwa-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "games"],
+  "screenshots": []
+}

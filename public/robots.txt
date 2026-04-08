@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /quiz/*
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /quizzes
+Disallow: /progress
+Disallow: /profile
+Disallow: /api/
+
+Sitemap: https://k3ssqlqvt37e2.mocha.app/sitemap.xml
