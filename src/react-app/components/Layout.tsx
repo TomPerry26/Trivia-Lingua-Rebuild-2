@@ -1,3 +1,11 @@
+interface User {
+  email?: string;
+  access_level?: string | null;
+}
+
+interface UserData {
+  access_level?: string | null;
+}
 import { ReactNode, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@getmocha/users-service/react";
