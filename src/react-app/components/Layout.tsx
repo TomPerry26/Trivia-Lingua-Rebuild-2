@@ -1,8 +1,3 @@
-interface User {
-  email?: string;
-  access_level?: string | null;
-}
-
 interface UserData {
   access_level?: string | null;
 }
@@ -113,7 +108,7 @@ export default function Layout({
     if (user) {
       fetch('/api/users/me')
         .then(res => res.ok ? res.json() : null)
-        .then(data => {
+        .then((data: UserData | null) => {
           if (data?.access_level === 'beta') {
             setIsAdmin(true);
           } else {
