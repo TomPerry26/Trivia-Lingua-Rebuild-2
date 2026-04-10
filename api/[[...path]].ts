@@ -1,8 +1,45 @@
 import { listAdminFeedback, listAdminMessages, listBlogPosts, listTopics } from "../src/server/queries.js";
 import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
+import { getDifficultyBySlug } from "../src/data/difficulties.js";
 
 const getPath = (req: Request) => new URL(req.url).pathname.replace(/^\/api\/?/, "");
+
+const parseCsv = (value: string | null) =>
+  (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizeSort = (sort: string | null): "latest" | "popular" | "a-z" => {
+  if (sort === "popular" || sort === "a-z") return sort;
+  return "latest";
+};
+
+const getAuthToken = (req: Request): string | null => {
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  return null;
+};
+
+const fallbackDifficultyContent = (slug: string) => {
+  const difficulty = getDifficultyBySlug(slug);
+  if (!difficulty) return null;
+
+  return {
+    difficulty: difficulty.name,
+    cefrLevel: difficulty.cefr,
+    title: `${difficulty.name} Spanish Quizzes (${difficulty.cefr})`,
+    description: `Build confidence at ${difficulty.cefr} with short Spanish reading quizzes designed for ${difficulty.name.toLowerCase()} learners.`,
+    whatYoullLearn:
+      "You will practice high-frequency vocabulary, sentence patterns, and reading strategies through short, focused quizzes.",
+    whyThisLevel:
+      `The ${difficulty.cefr} level balances challenge and confidence so you can grow your reading speed without feeling overwhelmed.`,
+    howToProgress:
+      "Complete quizzes consistently, review explanations, and gradually increase daily reading volume to move to the next level.",
+    metaDescription: `Practice ${difficulty.name.toLowerCase()} Spanish reading with interactive ${difficulty.cefr} quizzes on Trivia Lingua.`,
+  };
+};
 
 export default async function handler(req: Request): Promise<Response> {
   const path = getPath(req);
@@ -43,8 +80,302 @@ export default async function handler(req: Request): Promise<Response> {
 
     return jsonOk({
       latestQuizzes: latestRes.data ?? [],
-      homeRows: (rowsRes.data ?? []).map((row: any) => ({ row, quizzes: [] })),
+      homeRows: (rowsRes.data ?? []).map((row) => ({ row, quizzes: [] })),
     });
+  }
+
+  if (path === "quizzes/paginated") {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const url = new URL(req.url);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "24") || 24, 1), 100);
+    const offset = Math.max(Number(url.searchParams.get("offset") ?? "0") || 0, 0);
+    const difficultiesFilter = parseCsv(url.searchParams.get("difficulties"));
+    const topicsFilter = parseCsv(url.searchParams.get("topics"));
+    const sort = normalizeSort(url.searchParams.get("sort"));
+
+    let dataQuery = supabaseAdmin
+      .from("quizzes")
+      .select(
+        "id, title, difficulty, status, topics, total_word_count, completions, min_access_level, created_at, updated_at",
+        { count: "exact" },
+      )
+      .eq("status", "published");
+
+    if (difficultiesFilter.length > 0) {
+      dataQuery = dataQuery.in("difficulty", difficultiesFilter);
+    }
+
+    if (topicsFilter.length > 0) {
+      const quotedTopics = topicsFilter.map((topic) => `"${topic.replace(/"/g, "")}"`);
+      dataQuery = dataQuery.overlaps("topics", quotedTopics);
+    }
+
+    if (sort === "popular") {
+      dataQuery = dataQuery.order("completions", { ascending: false, nullsFirst: false });
+    } else if (sort === "a-z") {
+      dataQuery = dataQuery.order("title", { ascending: true });
+    } else {
+      dataQuery = dataQuery.order("created_at", { ascending: false });
+    }
+
+    const { data, error, count } = await dataQuery.range(offset, offset + limit - 1);
+
+    if (error) return jsonError("Failed to fetch quizzes", 500, error);
+
+    return jsonOk({
+      quizzes: data ?? [],
+      total: count ?? 0,
+      limit,
+      offset,
+    });
+  }
+
+  const quizByIdMatch = path.match(/^quizzes\/(\d+)$/);
+  if (quizByIdMatch) {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const quizId = Number(quizByIdMatch[1]);
+
+    const [quizRes, questionsRes] = await Promise.all([
+      supabaseAdmin
+        .from("quizzes")
+        .select("id, title, topic, topics, difficulty, min_access_level, status, total_word_count, completions, created_at, updated_at")
+        .eq("id", quizId)
+        .single(),
+      supabaseAdmin
+        .from("questions")
+        .select(
+          "id, quiz_id, question_text, correct_answer, option_a, option_b, option_c, option_d, explanation, word_count, question_order, image_url, explanation_image_url",
+        )
+        .eq("quiz_id", quizId)
+        .order("question_order", { ascending: true }),
+    ]);
+
+    if (quizRes.error) return jsonError("Failed to fetch quiz", 500, quizRes.error);
+    if (!quizRes.data) return jsonError("Quiz not found", 404);
+    if (questionsRes.error) return jsonError("Failed to fetch quiz questions", 500, questionsRes.error);
+
+    return jsonOk({
+      ...quizRes.data,
+      topic: quizRes.data.topic ?? (Array.isArray(quizRes.data.topics) ? quizRes.data.topics[0] : ""),
+      questions: questionsRes.data ?? [],
+    });
+  }
+
+  const quizCompleteMatch = path.match(/^quizzes\/(\d+)\/complete$/);
+  if (quizCompleteMatch) {
+    if (req.method !== "POST") return methodNotAllowed(req.method, ["POST"]);
+
+    const quizId = Number(quizCompleteMatch[1]);
+    const body = (await req.json().catch(() => null)) as { score?: number; words_read?: number } | null;
+
+    if (typeof body?.score !== "number" || typeof body?.words_read !== "number") {
+      return jsonError("score and words_read are required", 400);
+    }
+
+    const token = getAuthToken(req);
+    if (!token) return jsonError("Authentication required", 401);
+
+    const userRes = await supabaseAnon.auth.getUser(token);
+    const user = userRes.data.user;
+    if (!user) return jsonError("Authentication required", 401, userRes.error);
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [quizRes, nextQuizRes] = await Promise.all([
+      supabaseAdmin.from("quizzes").select("id, difficulty").eq("id", quizId).single(),
+      supabaseAdmin
+        .from("quizzes")
+        .select("id")
+        .eq("status", "published")
+        .gt("id", quizId)
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (quizRes.error || !quizRes.data) return jsonError("Quiz not found", 404, quizRes.error);
+
+    const attemptPayload = {
+      user_id: user.id,
+      quiz_id: quizId,
+      score: body.score,
+      words_read: body.words_read,
+      created_at: new Date().toISOString(),
+    };
+
+    const [attemptRes, completionRes, incrementCompletionRes] = await Promise.all([
+      supabaseAdmin.from("quiz_attempts").insert(attemptPayload),
+      supabaseAdmin
+        .from("quiz_completions")
+        .upsert({ user_id: user.id, quiz_id: quizId, completed_at: new Date().toISOString() }, { onConflict: "user_id,quiz_id" }),
+      supabaseAdmin.rpc("increment_quiz_completions", { p_quiz_id: quizId }),
+    ]);
+
+    if (attemptRes.error) return jsonError("Failed to record quiz attempt", 500, attemptRes.error);
+    if (completionRes.error) return jsonError("Failed to record quiz completion", 500, completionRes.error);
+    if (incrementCompletionRes.error) {
+      await supabaseAdmin.from("quizzes").update({ completions: 1 }).eq("id", quizId).is("completions", null);
+      await supabaseAdmin.rpc("increment", { table_name: "quizzes", row_id: quizId, column_name: "completions", by_amount: 1 });
+    }
+
+    const progressRes = await supabaseAdmin
+      .from("user_progress")
+      .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const prior = progressRes.data ?? {
+      daily_words_read: 0,
+      total_words_read: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      total_quizzes_completed: 0,
+      daily_target: 1000,
+      last_activity_date: null,
+    };
+
+    const wasToday = prior.last_activity_date === today;
+    const wasYesterday =
+      prior.last_activity_date === new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const dailyWordsRead = wasToday ? prior.daily_words_read + body.words_read : body.words_read;
+    const totalWordsRead = (prior.total_words_read ?? 0) + body.words_read;
+    const totalQuizzesCompleted = (prior.total_quizzes_completed ?? 0) + 1;
+    const currentStreak = wasToday ? prior.current_streak : wasYesterday ? (prior.current_streak ?? 0) + 1 : 1;
+    const longestStreak = Math.max(prior.longest_streak ?? 0, currentStreak);
+    const dailyTarget = prior.daily_target ?? 1000;
+    const goalReached = dailyWordsRead >= dailyTarget && (prior.daily_words_read ?? 0) < dailyTarget;
+
+    const progressUpsert = await supabaseAdmin.from("user_progress").upsert(
+      {
+        user_id: user.id,
+        daily_words_read: dailyWordsRead,
+        total_words_read: totalWordsRead,
+        current_streak: currentStreak,
+        longest_streak: longestStreak,
+        total_quizzes_completed: totalQuizzesCompleted,
+        daily_target: dailyTarget,
+        last_activity_date: today,
+      },
+      { onConflict: "user_id" },
+    );
+
+    if (progressUpsert.error) return jsonError("Failed to update progress", 500, progressUpsert.error);
+
+    return jsonOk({
+      success: true,
+      nextQuizId: nextQuizRes.data?.id ?? null,
+      goalReached,
+      dailyWordsRead,
+      dailyTarget,
+      currentStreak,
+      levelReached: false,
+      levelData: null,
+    });
+  }
+
+  const quizCompleteGuestMatch = path.match(/^quizzes\/(\d+)\/complete-guest$/);
+  if (quizCompleteGuestMatch) {
+    if (req.method !== "POST") return methodNotAllowed(req.method, ["POST"]);
+
+    const quizId = Number(quizCompleteGuestMatch[1]);
+    const body = (await req.json().catch(() => null)) as {
+      guest_session_id?: string;
+      score?: number;
+      words_read?: number;
+    } | null;
+
+    if (!body?.guest_session_id || typeof body.score !== "number" || typeof body.words_read !== "number") {
+      return jsonError("guest_session_id, score, and words_read are required", 400);
+    }
+
+    const insertRes = await supabaseAdmin.from("guest_quiz_attempts").insert({
+      quiz_id: quizId,
+      guest_session_id: body.guest_session_id,
+      score: body.score,
+      words_read: body.words_read,
+      created_at: new Date().toISOString(),
+    });
+
+    if (insertRes.error) {
+      return jsonOk({ success: true, stored: false, message: "Guest completion accepted without persistence" });
+    }
+
+    return jsonOk({ success: true, stored: true });
+  }
+
+  const difficultyContentMatch = path.match(/^difficulty\/([^/]+)\/content$/);
+  if (difficultyContentMatch) {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const slug = decodeURIComponent(difficultyContentMatch[1]);
+
+    const dbRes = await supabaseAdmin
+      .from("difficulty_content")
+      .select(
+        "difficulty, cefr_level, title, description, what_youll_learn, why_this_level, how_to_progress, meta_description",
+      )
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (!dbRes.error && dbRes.data) {
+      return jsonOk({
+        difficulty: dbRes.data.difficulty,
+        cefrLevel: dbRes.data.cefr_level,
+        title: dbRes.data.title,
+        description: dbRes.data.description,
+        whatYoullLearn: dbRes.data.what_youll_learn,
+        whyThisLevel: dbRes.data.why_this_level,
+        howToProgress: dbRes.data.how_to_progress,
+        metaDescription: dbRes.data.meta_description,
+      });
+    }
+
+    const fallback = fallbackDifficultyContent(slug);
+    if (!fallback) return jsonError("Difficulty not found", 404);
+
+    return jsonOk(fallback);
+  }
+
+  const difficultyRelatedMatch = path.match(/^difficulty\/([^/]+)\/related$/);
+  if (difficultyRelatedMatch) {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const slug = decodeURIComponent(difficultyRelatedMatch[1]);
+    const difficulty = getDifficultyBySlug(slug);
+    if (!difficulty) return jsonOk([]);
+
+    const dbRes = await supabaseAdmin
+      .from("difficulty_related_topics")
+      .select("topic_slug")
+      .eq("difficulty_slug", slug)
+      .order("sort_order", { ascending: true });
+
+    if (!dbRes.error && dbRes.data && dbRes.data.length > 0) {
+      return jsonOk(dbRes.data.map((row) => row.topic_slug).filter(Boolean));
+    }
+
+    const quizzesRes = await supabaseAdmin
+      .from("quizzes")
+      .select("topics")
+      .eq("status", "published")
+      .eq("difficulty", difficulty.name)
+      .limit(100);
+
+    if (quizzesRes.error) return jsonError("Failed to fetch related topics", 500, quizzesRes.error);
+
+    const topics = Array.from(
+      new Set(
+        (quizzesRes.data ?? [])
+          .flatMap((quiz) => (Array.isArray(quiz.topics) ? quiz.topics : []))
+          .map((topic) => String(topic).trim().toLowerCase().replace(/\s+/g, "-"))
+          .filter(Boolean),
+      ),
+    );
+
+    return jsonOk(topics.slice(0, 8));
   }
 
   if (path === "contact") {
@@ -108,8 +439,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "users/me") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = getAuthToken(req);
     if (!token) return jsonOk({ access_level: null });
 
     const { data } = await supabaseAnon.auth.getUser(token);
@@ -228,7 +558,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (error) return jsonError("Failed to export quizzes", 500, error);
 
-    const rows = (data ?? []).map((item: any) => ({
+    const rows = (data ?? []).map((item) => ({
       quiz_id: item.quiz_id,
       quiz_title: item.quizzes?.title ?? "",
       difficulty: item.quizzes?.difficulty ?? "",
