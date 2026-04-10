@@ -767,6 +767,14 @@ export default async function handler(req: Request): Promise<Response> {
 
     return jsonError(`No API route found for /api/${path}`, 404);
   } catch (error) {
-    return jsonError("Unhandled API route error", 500, error);
+    const details =
+      error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          }
+        : error;
+    return jsonError("Unhandled API route error", 500, details);
   }
 }
