@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../../api/_lib/supabase";
+import { supabaseAdmin } from "./supabase.js";
 
 export async function listTopics() {
   const { data, error } = await supabaseAdmin

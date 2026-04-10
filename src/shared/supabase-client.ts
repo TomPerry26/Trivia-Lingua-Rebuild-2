@@ -60,6 +60,13 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
     return this;
   }
 
+  upsert(payload: unknown, options?: { onConflict?: string }) {
+    this.method = "POST";
+    this.body = payload;
+    if (options?.onConflict) this.params.set("on_conflict", options.onConflict);
+    return this;
+  }
+
   delete() {
     this.method = "DELETE";
     return this;

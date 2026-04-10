@@ -1,4 +1,4 @@
-import { createClient } from "../../src/shared/supabase-client";
+import { createClient } from "../shared/supabase-client";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
