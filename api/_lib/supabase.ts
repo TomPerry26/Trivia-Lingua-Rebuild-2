@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "../../src/shared/supabase-client";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -14,8 +14,11 @@ if (missingServerEnvVars.length > 0) {
   throw new Error(`Missing required Supabase server environment variable(s): ${missingNames}.`);
 }
 
-export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey);
+const resolvedSupabaseUrl = supabaseUrl as string;
+const resolvedSupabaseAnonKey = supabaseAnonKey as string;
+
+export const supabaseAnon = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey);
 
 export const supabaseAdmin = supabaseServiceRoleKey
-  ? createClient(supabaseUrl, supabaseServiceRoleKey)
+  ? createClient(resolvedSupabaseUrl, supabaseServiceRoleKey)
   : supabaseAnon;
