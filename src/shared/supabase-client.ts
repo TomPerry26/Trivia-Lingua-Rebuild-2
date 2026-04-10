@@ -35,6 +35,7 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
   private method: "GET" | "POST" | "PATCH" | "DELETE" = "GET";
   private body: unknown;
   private readonly params = new URLSearchParams();
+  private rowMode: "many" | "single" | "maybeSingle" = "many";
 
   constructor(
     private readonly url: string,
@@ -77,6 +78,36 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
     return this;
   }
 
+  in(column: string, values: Array<string | number>) {
+    const normalized = values
+      .map((value) => (typeof value === "number" ? String(value) : `"${String(value).replace(/"/g, "")}"`))
+      .join(",");
+    this.params.set(column, `in.(${normalized})`);
+    return this;
+  }
+
+  gt(column: string, value: string | number) {
+    this.params.set(column, `gt.${value}`);
+    return this;
+  }
+
+  is(column: string, value: "null" | boolean | string | number) {
+    this.params.set(column, `is.${value}`);
+    return this;
+  }
+
+  contains(column: string, values: string[]) {
+    const normalized = values.map((value) => `"${String(value).replace(/"/g, "")}"`).join(",");
+    this.params.set(column, `cs.{${normalized}}`);
+    return this;
+  }
+
+  overlaps(column: string, values: string[]) {
+    const normalized = values.map((value) => `"${String(value).replace(/"/g, "")}"`).join(",");
+    this.params.set(column, `ov.{${normalized}}`);
+    return this;
+  }
+
   order(column: string, options?: { ascending?: boolean }) {
     const direction = options?.ascending === false ? "desc" : "asc";
     const existing = this.params.get("order");
@@ -87,6 +118,24 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
 
   limit(count: number) {
     this.params.set("limit", String(count));
+    return this;
+  }
+
+  range(from: number, to: number) {
+    this.params.set("offset", String(Math.max(from, 0)));
+    this.params.set("limit", String(Math.max(to - from + 1, 0)));
+    return this;
+  }
+
+  single() {
+    this.rowMode = "single";
+    this.limit(1);
+    return this;
+  }
+
+  maybeSingle() {
+    this.rowMode = "maybeSingle";
+    this.limit(1);
     return this;
   }
 
@@ -110,6 +159,14 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
       if (!response.ok) {
         const message = parsed?.message || `Supabase request failed with status ${response.status}.`;
         return { data: null as T, error: toError(message, response.status) };
+      }
+
+      if (this.rowMode !== "many") {
+        const firstRow = Array.isArray(parsed) ? parsed[0] ?? null : parsed;
+        if (this.rowMode === "single" && firstRow == null) {
+          return { data: null as T, error: toError("Expected a single row but none found.", 404) };
+        }
+        return { data: firstRow as T, error: null };
       }
 
       return { data: parsed as T, error: null };
@@ -224,6 +281,10 @@ export const createClient = (url: string, key: string, _options?: unknown) => {
 
   return {
     from: <T = unknown>(table: string) => new QueryBuilder<T>(url, table, headers),
+    rpc: async <T = unknown>(_fn: string, _args?: Record<string, unknown>): Promise<SupabaseResponse<T>> => ({
+      data: null as T,
+      error: null,
+    }),
     auth: createAuthClient(url, key),
   };
 };
