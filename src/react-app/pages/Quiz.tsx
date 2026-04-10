@@ -11,6 +11,7 @@ import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
+import { supabase } from "@/react-app/lib/supabase";
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -22,6 +23,21 @@ function getGuestSessionId(): string {
     localStorage.setItem(storageKey, sessionId);
   }
   return sessionId;
+}
+
+async function fetchWithSupabaseAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const headers = new Headers(init?.headers);
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return fetch(input, {
+    ...init,
+    headers,
+  });
 }
 
 interface Question {
@@ -81,7 +97,7 @@ export default function QuizPage() {
         // Get user's access level
         let accessLevel: AccessLevel = 'guest';
         if (user) {
-          const profileResponse = await fetch('/api/users/me');
+          const profileResponse = await fetchWithSupabaseAuth('/api/users/me');
           if (profileResponse.ok) {
             const profileData = await profileResponse.json();
             accessLevel = profileData.access_level || 'member';
