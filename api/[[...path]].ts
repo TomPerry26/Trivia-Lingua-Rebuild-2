@@ -64,6 +64,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (path === "home-data") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const HOME_ROW_QUIZ_LIMIT = 12;
 
     const [latestRes, rowsRes] = await Promise.all([
       supabaseAdmin
@@ -78,9 +79,28 @@ export default async function handler(req: Request): Promise<Response> {
     if (latestRes.error) return jsonError("Failed to load latest quizzes", 500, latestRes.error);
     if (rowsRes.error) return jsonError("Failed to load home rows", 500, rowsRes.error);
 
+    const rows = rowsRes.data ?? [];
+    const homeRowQuizResults = await Promise.all(
+      rows.map((row) => {
+        if (!row.topic_tag) return Promise.resolve({ data: [], error: null });
+
+        return supabaseAdmin
+          .from("quizzes")
+          .select("id, title, difficulty, status, topics, total_word_count, completions, created_at, updated_at")
+          .eq("status", "published")
+          .contains("topics", [row.topic_tag])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(HOME_ROW_QUIZ_LIMIT);
+      }),
+    );
+
+    const homeRowError = homeRowQuizResults.find((result) => result.error);
+    if (homeRowError?.error) return jsonError("Failed to load home row quizzes", 500, homeRowError.error);
+
     return jsonOk({
       latestQuizzes: latestRes.data ?? [],
-      homeRows: (rowsRes.data ?? []).map((row) => ({ row, quizzes: [] })),
+      homeRows: rows.map((row, index) => ({ row, quizzes: homeRowQuizResults[index]?.data ?? [] })),
     });
   }
 
