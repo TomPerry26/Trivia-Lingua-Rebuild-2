@@ -32,6 +32,7 @@ npm run dev
 
 ## Vercel deployment notes
 
+- Set the Vercel **Build Command** to `npm run build` (or leave it empty so Vercel uses the package script default).
 - Configure the following environment variables in your Vercel project settings:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
