@@ -476,6 +476,76 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  if (path === "progress") {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const url = new URL(req.url, "http://localhost");
+    const localDate = url.searchParams.get("local_date") ?? new Date().toISOString().slice(0, 10);
+    const token = getAuthToken(req);
+    if (!token) {
+      return jsonOk({
+        daily_words_read: 0,
+        total_words_read: 0,
+        current_streak: 0,
+        longest_streak: 0,
+        total_quizzes_completed: 0,
+        daily_target: 1000,
+        last_activity_date: null,
+        quiz_words: 0,
+        external_words: 0,
+      });
+    }
+
+    const userRes = await supabaseAnon.auth.getUser(token);
+    const user = userRes.data.user;
+    if (!user) {
+      return jsonOk({
+        daily_words_read: 0,
+        total_words_read: 0,
+        current_streak: 0,
+        longest_streak: 0,
+        total_quizzes_completed: 0,
+        daily_target: 1000,
+        last_activity_date: null,
+        quiz_words: 0,
+        external_words: 0,
+      });
+    }
+
+    const [progressRes, externalRes] = await Promise.all([
+      supabaseAdmin
+        .from("user_progress")
+        .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("external_reading_logs")
+        .select("words_read")
+        .eq("user_id", user.id)
+        .eq("reading_date", localDate),
+    ]);
+
+    if (progressRes.error) return jsonError("Failed to fetch user progress", 500, progressRes.error);
+    if (externalRes.error) return jsonError("Failed to fetch external reading progress", 500, externalRes.error);
+
+    const progress = progressRes.data ?? {
+      daily_words_read: 0,
+      total_words_read: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      total_quizzes_completed: 0,
+      daily_target: 1000,
+      last_activity_date: null,
+    };
+    const externalWords = (externalRes.data ?? []).reduce((sum, row) => sum + (row.words_read ?? 0), 0);
+
+    return jsonOk({
+      ...progress,
+      quiz_words: progress.daily_words_read ?? 0,
+      external_words: externalWords,
+    });
+  }
+
   if (path === "progress/email-opt-in") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
