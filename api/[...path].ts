@@ -49,28 +49,23 @@ const enrichQuizzes = async (quizzes: QuizBase[]) => {
     supabaseAdmin.from("topics").select("id, name"),
   ]);
 
-  if (wordsRes.error) throw wordsRes.error;
-  if (attemptsRes.error) throw attemptsRes.error;
-  if (quizTopicsRes.error) throw quizTopicsRes.error;
-  if (topicsRes.error) throw topicsRes.error;
-
   const wordsByQuiz = new Map<number, number>();
-  for (const row of wordsRes.data ?? []) {
+  for (const row of wordsRes.error ? [] : (wordsRes.data ?? [])) {
     wordsByQuiz.set(row.quiz_id, (wordsByQuiz.get(row.quiz_id) ?? 0) + (row.word_count ?? 0));
   }
 
   const completionsByQuiz = new Map<number, number>();
-  for (const row of attemptsRes.data ?? []) {
+  for (const row of attemptsRes.error ? [] : (attemptsRes.data ?? [])) {
     completionsByQuiz.set(row.quiz_id, (completionsByQuiz.get(row.quiz_id) ?? 0) + 1);
   }
 
   const topicNameById = new Map<number, string>();
-  for (const topic of topicsRes.data ?? []) {
+  for (const topic of topicsRes.error ? [] : (topicsRes.data ?? [])) {
     topicNameById.set(topic.id, topic.name);
   }
 
   const topicsByQuiz = new Map<number, string[]>();
-  for (const row of quizTopicsRes.data ?? []) {
+  for (const row of quizTopicsRes.error ? [] : (quizTopicsRes.data ?? [])) {
     const topicName = topicNameById.get(row.topic_id);
     if (!topicName) continue;
     const list = topicsByQuiz.get(row.quiz_id) ?? [];
