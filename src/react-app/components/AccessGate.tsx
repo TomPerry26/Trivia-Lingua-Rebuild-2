@@ -1,5 +1,5 @@
 import { Lock } from "lucide-react";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import type { AccessLevel } from "@/shared/access-levels";
 
 interface AccessGateProps {

@@ -1,4 +1,4 @@
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { User, Mail, Calendar, LogOut, Smartphone, ArrowRight, HelpCircle, MessageSquare, Bell } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
@@ -12,7 +12,7 @@ interface BeforeInstallPromptEvent extends Event {
 export default function ProfilePage() {
   const {
     user,
-    logout
+    signOut
   } = useAuth();
   const location = useLocation();
   const hasScrolledRef = useRef(false);
@@ -71,7 +71,7 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
-    await logout();
+    await signOut();
   };
 
   const handleEmailOptInChange = async (checked: boolean) => {
@@ -93,8 +93,11 @@ export default function ProfilePage() {
     }
   };
 
-  const userName = user?.google_user_data?.name || (user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'User');
-  const profilePicture = user?.google_user_data?.picture;
+  const userName = (user?.user_metadata?.full_name as string | undefined)
+    || (user?.user_metadata?.name as string | undefined)
+    || (user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'User');
+  const profilePicture = (user?.user_metadata?.avatar_url as string | undefined)
+    || (user?.user_metadata?.picture as string | undefined);
   const memberSince = user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'long',

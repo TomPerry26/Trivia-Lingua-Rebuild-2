@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router";
 import { BookOpen, ChevronRight, CheckCircle2, Lock } from "lucide-react";
 import type { Quiz } from "@/shared/types";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { buildQuizUrl } from "@/shared/slug-utils";
 

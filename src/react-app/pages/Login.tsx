@@ -1,4 +1,4 @@
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { Sparkles, BookOpen, TrendingUp, Smartphone } from "lucide-react";

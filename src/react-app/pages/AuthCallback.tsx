@@ -1,28 +1,42 @@
-import { useAuth } from "@getmocha/users-service/react";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/react-app/lib/supabase";
 
 export default function AuthCallbackPage() {
-  const { exchangeCodeForSessionToken } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const code = searchParams.get("code");
-        
-        if (!code) {
-          setError("No authorization code found. Please try logging in again.");
-          return;
+        const callbackUrl = window.location.href;
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const hasTokenHash = hashParams.has("access_token") && hashParams.has("refresh_token");
+
+        if (hasTokenHash) {
+          const access_token = hashParams.get("access_token");
+          const refresh_token = hashParams.get("refresh_token");
+
+          if (!access_token || !refresh_token) {
+            throw new Error("Missing authentication tokens in callback URL.");
+          }
+
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+
+          if (setSessionError) {
+            throw setSessionError;
+          }
+        } else {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+          if (exchangeError) {
+            throw exchangeError;
+          }
         }
 
-        // Exchange code for session token (stored in httpOnly cookie)
-        await exchangeCodeForSessionToken();
-        
-        // Navigate to home - AuthProvider will automatically fetch user
         navigate("/", { replace: true });
       } catch (err) {
         console.error("Authentication error:", err);
@@ -31,7 +45,7 @@ export default function AuthCallbackPage() {
     };
 
     handleCallback();
-  }, [exchangeCodeForSessionToken, navigate, searchParams]);
+  }, [navigate]);
 
   if (error) {
     return (

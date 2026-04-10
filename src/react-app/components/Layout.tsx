@@ -3,7 +3,7 @@ interface UserData {
 }
 import { ReactNode, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { Home, BookOpen, BarChart3, User as UserIcon, LogOut, Edit2, PieChart, Mail, MessageCircle, List, Database, Eye, Target } from "lucide-react";
 import { useProgressQuery } from "@/react-app/hooks/useProgressQuery";
 import EmailOptInModal from "@/react-app/components/EmailOptInModal";
@@ -18,7 +18,7 @@ export default function Layout({
 }: LayoutProps) {
   const {
     user,
-    logout,
+    signOut,
     redirectToLogin
   } = useAuth();
   const location = useLocation();
@@ -68,7 +68,7 @@ export default function Layout({
     }
   };
   const handleLogout = async () => {
-    await logout();
+    await signOut();
   };
   const handleEditTarget = () => {
     const currentTarget = user ? progress?.daily_target || 1000 : guestProgress?.dailyTarget || 1000;

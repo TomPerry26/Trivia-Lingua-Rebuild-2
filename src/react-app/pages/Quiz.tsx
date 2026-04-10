@@ -5,7 +5,7 @@ import confetti from "canvas-confetti";
 import QuestionFeedback from "../components/QuestionFeedback";
 import MetaTags from "../components/MetaTags";
 import { queryClient } from "@/react-app/lib/queryClient";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import QuizSchema from "../components/QuizSchema";
 import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";

@@ -4,7 +4,7 @@ import { Loader2, BookOpen, Flame, Trophy, Target, ChevronLeft, ChevronRight, Pl
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import LevelCard from "@/react-app/components/LevelCard";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { getGuestProgress } from "@/react-app/lib/guestProgress";
 export default function ProgressPage() {
   const queryClient = useQueryClient();
