@@ -3,6 +3,10 @@ import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
 
+export const config = {
+  runtime: "edge",
+};
+
 const getPath = (req: Request) => new URL(req.url, "http://localhost").pathname.replace(/^\/api\/?/, "");
 
 const parseCsv = (value: string | null) =>
