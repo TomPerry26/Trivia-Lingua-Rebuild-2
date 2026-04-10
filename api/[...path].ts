@@ -3,7 +3,7 @@ import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
 
-const getPath = (req: Request) => new URL(req.url).pathname.replace(/^\/api\/?/, "");
+const getPath = (req: Request) => new URL(req.url, "http://localhost").pathname.replace(/^\/api\/?/, "");
 
 const parseCsv = (value: string | null) =>
   (value ?? "")
@@ -107,7 +107,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "quizzes/paginated") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const url = new URL(req.url);
+    const url = new URL(req.url, "http://localhost");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "24") || 24, 1), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? "0") || 0, 0);
     const difficultiesFilter = parseCsv(url.searchParams.get("difficulties"));
