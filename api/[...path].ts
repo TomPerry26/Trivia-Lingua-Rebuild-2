@@ -101,7 +101,8 @@ const fallbackDifficultyContent = (slug: string) => {
 };
 
 export default async function handler(req: Request): Promise<Response> {
-  const path = getPath(req);
+  try {
+    const path = getPath(req);
 
   if (path === "topics") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
@@ -764,5 +765,8 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  return jsonError(`No API route found for /api/${path}`, 404);
+    return jsonError(`No API route found for /api/${path}`, 404);
+  } catch (error) {
+    return jsonError("Unhandled API route error", 500, error);
+  }
 }
