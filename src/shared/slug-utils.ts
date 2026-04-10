@@ -56,8 +56,10 @@ export function buildQuizUrl(
   if (typeof slugOrQuiz === 'object') {
     const quiz = slugOrQuiz;
     if (quiz.url_slug) {
-      // Use the slug exactly as stored (should include ID)
-      return `/${language}/quiz/${quiz.url_slug}`;
+      // Ensure slug includes trailing numeric ID for reliable route parsing.
+      const hasTrailingId = /-\d+$/.test(quiz.url_slug);
+      const normalizedSlug = hasTrailingId ? quiz.url_slug : `${quiz.url_slug}-${quiz.id}`;
+      return `/${language}/quiz/${normalizedSlug}`;
     }
     // Fallback to old format if no slug
     return `/quiz/${quiz.id}`;

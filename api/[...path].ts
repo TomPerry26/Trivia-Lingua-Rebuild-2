@@ -32,7 +32,7 @@ type QuizBase = {
   difficulty: string | null;
   status: string | null;
   topic?: string | null;
-  min_access_level?: number | null;
+  min_access_level?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -184,7 +184,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     let dataQuery = supabaseAdmin
       .from("quizzes")
-      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
+      .select("id, title, difficulty, status, topic, created_at, updated_at")
       .eq("status", "published");
 
     if (difficultiesFilter.length > 0) {
@@ -218,16 +218,16 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const quizByIdMatch = path.match(/^quizzes\/(\d+)$/);
+  const quizByIdMatch = path.match(/^quizzes\/([^/]+)$/);
   if (quizByIdMatch) {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const quizId = Number(quizByIdMatch[1]);
+    const quizId = decodeURIComponent(quizByIdMatch[1]);
 
     const [quizRes, questionsRes] = await Promise.all([
       supabaseAdmin
         .from("quizzes")
-        .select("id, title, topic, difficulty, min_access_level, status, created_at, updated_at")
+        .select("id, title, topic, difficulty, status, created_at, updated_at")
         .eq("id", quizId)
         .single(),
       supabaseAdmin
