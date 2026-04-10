@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session, User } from "@supabase/supabase-js";
+import type { Session, User } from "../../shared/supabase-client";
 import { supabase } from "@/react-app/lib/supabase";
 
 type SignInProvider = "google";
