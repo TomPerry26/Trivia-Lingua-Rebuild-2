@@ -253,13 +253,26 @@ export default async function handler(req: Request): Promise<Response> {
     const baseQuizzes = (data ?? []) as QuizBase[];
 
     if (sort === "popular") {
-      const enriched = await enrichQuizzes(baseQuizzes);
-      enriched.sort((a, b) => (b.completions ?? 0) - (a.completions ?? 0));
-      const paginated = enriched.slice(offset, offset + limit);
+      const attemptsRes = await supabaseAdmin.from("quiz_attempts").select("quiz_id");
+      if (attemptsRes.error) return jsonError("Failed to fetch quiz completion counts", 500, attemptsRes.error);
+
+      const candidateIds = new Set(baseQuizzes.map((quiz) => String(quiz.id)));
+      const completionsByQuiz = new Map<string, number>();
+      for (const row of attemptsRes.data ?? []) {
+        const quizId = String(row.quiz_id);
+        if (!candidateIds.has(quizId)) continue;
+        completionsByQuiz.set(quizId, (completionsByQuiz.get(quizId) ?? 0) + 1);
+      }
+
+      const sortedBase = [...baseQuizzes].sort(
+        (a, b) => (completionsByQuiz.get(String(b.id)) ?? 0) - (completionsByQuiz.get(String(a.id)) ?? 0),
+      );
+      const paginatedBase = sortedBase.slice(offset, offset + limit);
+      const paginated = await enrichQuizzes(paginatedBase);
 
       return jsonOk({
         quizzes: paginated,
-        total: enriched.length,
+        total: sortedBase.length,
         limit,
         offset,
       });
