@@ -50,6 +50,7 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
   // Check if quiz has min_access_level and if user has access
   const quizAccessLevel = (quiz as any).min_access_level as AccessLevel | undefined;
   const isLocked = quizAccessLevel ? !hasAccess(effectiveAccessLevel, quizAccessLevel) : false;
+  const exactWordCount = typeof quiz.total_word_count === "number" ? quiz.total_word_count : null;
 
   const handleClick = () => {
     // Save current scroll position before navigating
@@ -106,7 +107,7 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
           </h4>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <BookOpen className="w-3.5 h-3.5" />
-            <span>≈ {quiz.total_word_count || '500-1000'} words</span>
+            <span>≈ {exactWordCount !== null ? exactWordCount.toLocaleString() : "500-1000"} words</span>
           </div>
         </div>
         {isLocked ? (
