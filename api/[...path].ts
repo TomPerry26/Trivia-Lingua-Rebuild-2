@@ -129,7 +129,7 @@ export default async function handler(req: Request): Promise<Response> {
     const [latestRes, rowsRes] = await Promise.all([
       supabaseAdmin
         .from("quizzes")
-        .select("id, title, difficulty, status, topic, created_at, updated_at")
+        .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
         .eq("status", "published")
         .order("created_at", { ascending: false })
         .limit(12),
@@ -146,7 +146,7 @@ export default async function handler(req: Request): Promise<Response> {
       rows.map((row) => {
         return supabaseAdmin
           .from("quizzes")
-          .select("id, title, difficulty, status, topic, created_at, updated_at")
+          .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
           .eq("status", "published")
           .order("created_at", { ascending: false })
           .order("id", { ascending: false })
@@ -184,7 +184,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     let dataQuery = supabaseAdmin
       .from("quizzes")
-      .select("id, title, difficulty, status, topic, created_at, updated_at")
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .eq("status", "published");
 
     if (difficultiesFilter.length > 0) {
@@ -230,7 +230,7 @@ export default async function handler(req: Request): Promise<Response> {
     const [quizRes, questionsRes] = await Promise.all([
       supabaseAdmin
         .from("quizzes")
-        .select("id, title, topic, difficulty, status, created_at, updated_at")
+        .select("id, title, topic, difficulty, status, min_access_level, created_at, updated_at")
         .eq("id", quizId)
         .single(),
       supabaseAdmin
@@ -450,7 +450,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const quizzesRes = await supabaseAdmin
       .from("quizzes")
-      .select("id, title, difficulty, status, topic, created_at, updated_at")
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .eq("status", "published")
       .eq("difficulty", difficulty.name)
       .limit(100);
@@ -700,7 +700,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data, error } = await supabaseAdmin
       .from("quizzes")
-      .select("id, title, difficulty, status, topic, created_at, updated_at")
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .order("id", { ascending: false });
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
