@@ -239,17 +239,18 @@ const createAuthClient = (url: string, key: string) => {
       provider: OAuthProvider;
       options?: OAuthOptions;
     }): Promise<SupabaseResponse<{ provider: OAuthProvider; url: string }>> {
-      const oauthUrl = new URL(`${url}/auth/v1/authorize`);
-      oauthUrl.searchParams.set("provider", provider);
+      const directOauthUrl = new URL(`${url}/auth/v1/authorize`);
+      directOauthUrl.searchParams.set("provider", provider);
       if (options?.redirectTo) {
-        oauthUrl.searchParams.set("redirect_to", options.redirectTo);
+        directOauthUrl.searchParams.set("redirect_to", options.redirectTo);
       }
 
       // Ask Supabase for the provider redirect URL first so disabled providers
       // return a handled error instead of hard-navigating to a JSON error page.
-      oauthUrl.searchParams.set("skip_http_redirect", "true");
+      const preflightUrl = new URL(directOauthUrl.toString());
+      preflightUrl.searchParams.set("skip_http_redirect", "true");
 
-      let href = oauthUrl.toString();
+      let href = preflightUrl.toString();
       try {
         const response = await fetch(href, {
           headers: authHeaders,
@@ -262,9 +263,10 @@ const createAuthClient = (url: string, key: string) => {
           };
         }
         href = payload.url;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "OAuth authorization request failed.";
-        return { data: { provider, url: href }, error: toError(message) };
+      } catch {
+        // Some browsers/environments can fail this request (e.g. interception/CORS),
+        // so fall back to direct OAuth navigation instead of blocking sign-in.
+        href = directOauthUrl.toString();
       }
 
       if (!options?.skipBrowserRedirect && typeof window !== "undefined") {
