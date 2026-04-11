@@ -15,7 +15,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function getCallbackUrl() {
-  return `${window.location.origin}/auth/callback`;
+  // Keep callback on root document for hosts without SPA path rewrites.
+  // The app migrates `/#/auth/callback` to `/auth/callback` client-side.
+  return `${window.location.origin}/#/auth/callback`;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
