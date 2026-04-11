@@ -4,7 +4,6 @@ import { BookOpen, ChevronRight, CheckCircle2, Lock } from "lucide-react";
 import type { Quiz } from "@/shared/types";
 import { useAuth } from "@/react-app/contexts/AuthContext";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
-import { buildQuizUrl } from "@/shared/slug-utils";
 
 interface LazyQuizCardProps {
   quiz: Quiz;
@@ -90,7 +89,7 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
 
   return (
     <Link 
-      to={buildQuizUrl(quiz as any)}
+      to={`/quiz/${quiz.id}`}
       onClick={handleClick}
       className={`block group bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg hover:shadow-xl p-4 border border-orange-100 transition-all duration-200 hover:scale-105 ${className || ""}`}
     >
