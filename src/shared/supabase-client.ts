@@ -188,18 +188,45 @@ const createAuthClient = (url: string, key: string) => {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
   };
+  const SESSION_STORAGE_KEY = "trivia_lingua_auth_session";
+  const listeners = new Set<(event: string, session: Session | null) => void>();
+
+  const readStoredSession = (): Session | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as Session;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredSession = (session: Session | null) => {
+    if (typeof window === "undefined") return;
+    if (!session) {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  };
+
+  const emit = (event: string, session: Session | null) => {
+    for (const listener of listeners) listener(event, session);
+  };
 
   return {
     async getSession(): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+      return { data: { session: readStoredSession() }, error: null };
     },
 
     onAuthStateChange(callback: (event: string, session: Session | null) => void) {
-      callback("INITIAL_SESSION", null);
+      listeners.add(callback);
+      callback("INITIAL_SESSION", readStoredSession());
       return {
         data: {
           subscription: {
-            unsubscribe: () => undefined,
+            unsubscribe: () => listeners.delete(callback),
           },
         },
       };
@@ -230,15 +257,62 @@ const createAuthClient = (url: string, key: string) => {
     },
 
     async signOut(): Promise<SupabaseResponse<null>> {
+      writeStoredSession(null);
+      emit("SIGNED_OUT", null);
       return { data: null, error: null };
     },
 
-    async setSession(_session: Session): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+    async setSession(session: Session): Promise<SupabaseResponse<{ session: Session | null }>> {
+      const userRes = await this.getUser(session.access_token);
+      const nextSession: Session = {
+        ...session,
+        user: userRes.data.user ?? undefined,
+      };
+      writeStoredSession(nextSession);
+      emit("SIGNED_IN", nextSession);
+      return { data: { session: nextSession }, error: null };
     },
 
-    async exchangeCodeForSession(_callbackUrl: string): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+    async exchangeCodeForSession(callbackUrl: string): Promise<SupabaseResponse<{ session: Session | null }>> {
+      try {
+        const parsed = new URL(callbackUrl);
+        const code = parsed.searchParams.get("code");
+        if (!code) return { data: { session: null }, error: toError("Missing auth code in callback URL.", 400) };
+
+        const response = await fetch(`${url}/auth/v1/token?grant_type=pkce`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ auth_code: code }),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          access_token?: string;
+          refresh_token?: string;
+          expires_at?: number;
+          user?: User;
+          message?: string;
+        };
+
+        if (!response.ok || !payload.access_token) {
+          return {
+            data: { session: null },
+            error: toError(payload.message || `Unable to exchange auth code. HTTP ${response.status}.`, response.status),
+          };
+        }
+
+        const session: Session = {
+          access_token: payload.access_token,
+          refresh_token: payload.refresh_token,
+          expires_at: payload.expires_at,
+          user: payload.user,
+        };
+        writeStoredSession(session);
+        emit("SIGNED_IN", session);
+        return { data: { session }, error: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown exchange session error.";
+        return { data: { session: null }, error: toError(message) };
+      }
     },
 
     async getUser(token?: string): Promise<SupabaseResponse<{ user: User | null }>> {
