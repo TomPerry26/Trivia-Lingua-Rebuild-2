@@ -13,21 +13,21 @@ export async function generateSitemap(c: Context) {
     
     // Login page (main entry point for guests)
     xml += '  <url>\n';
-    xml += `    <loc>${baseUrl}/#/login</loc>\n`;
+    xml += `    <loc>${baseUrl}/login</loc>\n`;
     xml += '    <changefreq>daily</changefreq>\n';
     xml += '    <priority>0.9</priority>\n';
     xml += '  </url>\n';
     
     // About page
     xml += '  <url>\n';
-    xml += `    <loc>${baseUrl}/#/about</loc>\n`;
+    xml += `    <loc>${baseUrl}/about</loc>\n`;
     xml += '    <changefreq>monthly</changefreq>\n';
     xml += '    <priority>0.7</priority>\n';
     xml += '  </url>\n';
     
     // Blog index
     xml += '  <url>\n';
-    xml += `    <loc>${baseUrl}/#/blog</loc>\n`;
+    xml += `    <loc>${baseUrl}/blog</loc>\n`;
     xml += '    <changefreq>weekly</changefreq>\n';
     xml += '    <priority>0.8</priority>\n';
     xml += '  </url>\n';
@@ -35,7 +35,7 @@ export async function generateSitemap(c: Context) {
     // Topic landing pages
     for (const topic of topics) {
       xml += '  <url>\n';
-      xml += `    <loc>${baseUrl}/#/es/topic/${topic.slug}</loc>\n`;
+      xml += `    <loc>${baseUrl}/es/topic/${topic.slug}</loc>\n`;
       xml += '    <changefreq>weekly</changefreq>\n';
       xml += '    <priority>0.9</priority>\n';
       xml += '  </url>\n';
@@ -44,7 +44,7 @@ export async function generateSitemap(c: Context) {
     // Difficulty landing pages
     for (const difficulty of difficulties) {
       xml += '  <url>\n';
-      xml += `    <loc>${baseUrl}/#/es/${difficulty.slug}</loc>\n`;
+      xml += `    <loc>${baseUrl}/es/${difficulty.slug}</loc>\n`;
       xml += '    <changefreq>weekly</changefreq>\n';
       xml += '    <priority>0.9</priority>\n';
       xml += '  </url>\n';
@@ -81,7 +81,7 @@ export async function generateBlogSitemap(c: Context) {
     
     for (const post of blogPosts) {
       xml += '  <url>\n';
-      xml += `    <loc>${baseUrl}/#/blog/${post.slug}</loc>\n`;
+      xml += `    <loc>${baseUrl}/blog/${post.slug}</loc>\n`;
       xml += `    <lastmod>${new Date(post.published_at as string).toISOString().split('T')[0]}</lastmod>\n`;
       xml += '    <changefreq>monthly</changefreq>\n';
       xml += '    <priority>0.8</priority>\n';

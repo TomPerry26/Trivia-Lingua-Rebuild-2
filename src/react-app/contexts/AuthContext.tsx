@@ -15,7 +15,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function getCallbackUrl() {
-  return `${window.location.origin}/#/auth/callback`;
+  return `${window.location.origin}/auth/callback`;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
