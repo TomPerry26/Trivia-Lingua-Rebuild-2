@@ -189,7 +189,24 @@ const createAuthClient = (url: string, key: string) => {
     "Content-Type": "application/json",
   };
   const SESSION_STORAGE_KEY = "trivia_lingua_auth_session";
+  const PKCE_VERIFIER_STORAGE_KEY = "trivia_lingua_pkce_code_verifier";
   const listeners = new Set<(event: string, session: Session | null) => void>();
+
+  const toBase64Url = (bytes: Uint8Array) =>
+    btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+
+  const createPkcePair = async () => {
+    const verifierBytes = new Uint8Array(32);
+    crypto.getRandomValues(verifierBytes);
+    const codeVerifier = toBase64Url(verifierBytes);
+    const encodedVerifier = new TextEncoder().encode(codeVerifier);
+    const digest = await crypto.subtle.digest("SHA-256", encodedVerifier);
+    const codeChallenge = toBase64Url(new Uint8Array(digest));
+    return { codeVerifier, codeChallenge };
+  };
 
   const readStoredSession = (): Session | null => {
     if (typeof window === "undefined") return null;
@@ -244,6 +261,14 @@ const createAuthClient = (url: string, key: string) => {
       if (options?.redirectTo) {
         oauthUrl.searchParams.set("redirect_to", options.redirectTo);
       }
+      oauthUrl.searchParams.set("flow_type", "pkce");
+
+      if (typeof window !== "undefined") {
+        const { codeVerifier, codeChallenge } = await createPkcePair();
+        window.localStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, codeVerifier);
+        oauthUrl.searchParams.set("code_challenge", codeChallenge);
+        oauthUrl.searchParams.set("code_challenge_method", "s256");
+      }
 
       const href = oauthUrl.toString();
       if (!options?.skipBrowserRedirect && typeof window !== "undefined") {
@@ -278,11 +303,17 @@ const createAuthClient = (url: string, key: string) => {
         const parsed = new URL(callbackUrl);
         const code = parsed.searchParams.get("code");
         if (!code) return { data: { session: null }, error: toError("Missing auth code in callback URL.", 400) };
+        const codeVerifier = typeof window !== "undefined"
+          ? window.localStorage.getItem(PKCE_VERIFIER_STORAGE_KEY)
+          : null;
+        if (!codeVerifier) {
+          return { data: { session: null }, error: toError("Missing PKCE code verifier for auth callback.", 400) };
+        }
 
         const response = await fetch(`${url}/auth/v1/token?grant_type=pkce`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ auth_code: code }),
+          body: JSON.stringify({ auth_code: code, code_verifier: codeVerifier }),
         });
 
         const payload = (await response.json().catch(() => ({}))) as {
@@ -306,6 +337,9 @@ const createAuthClient = (url: string, key: string) => {
           expires_at: payload.expires_at,
           user: payload.user,
         };
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY);
+        }
         writeStoredSession(session);
         emit("SIGNED_IN", session);
         return { data: { session }, error: null };
