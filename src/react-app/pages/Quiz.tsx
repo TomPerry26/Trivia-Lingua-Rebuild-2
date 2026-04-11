@@ -113,7 +113,7 @@ export default function QuizPage() {
           return;
         }
 
-        const quizResponse = await fetch(`/api/quizzes/${quizId}`);
+        const quizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
@@ -219,7 +219,7 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quizzes/${data.nextQuizId}`);
+              const nextQuizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);

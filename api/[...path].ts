@@ -218,11 +218,14 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const quizIdFromQuery =
+    path === "quiz" ? new URL(req.url, "http://localhost").searchParams.get("quiz_id") ?? new URL(req.url, "http://localhost").searchParams.get("id") : null;
   const quizByIdMatch = path.match(/^quizzes\/([^/]+)$/);
-  if (quizByIdMatch) {
+  if (quizByIdMatch || quizIdFromQuery) {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const quizId = decodeURIComponent(quizByIdMatch[1]);
+    const quizId = decodeURIComponent(quizIdFromQuery ?? quizByIdMatch?.[1] ?? "");
+    if (!quizId) return jsonError("quiz_id is required", 400);
 
     const [quizRes, questionsRes] = await Promise.all([
       supabaseAdmin
