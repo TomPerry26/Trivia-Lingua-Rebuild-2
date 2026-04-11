@@ -197,7 +197,10 @@ export default async function handler(req: Request): Promise<Response> {
 
     let enriched = await enrichQuizzes((data ?? []) as QuizBase[]);
     if (topicsFilter.length > 0) {
-      enriched = enriched.filter((quiz) => quiz.topics.some((topic) => topicsFilter.includes(topic)));
+      const normalizedTopicsFilter = topicsFilter.map((topic) => topic.trim().toLowerCase());
+      enriched = enriched.filter((quiz) =>
+        quiz.topics.some((topic) => normalizedTopicsFilter.includes(String(topic).trim().toLowerCase())),
+      );
     }
 
     if (sort === "popular") {
