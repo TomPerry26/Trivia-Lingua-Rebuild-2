@@ -49,23 +49,35 @@ const enrichQuizzes = async (quizzes: QuizBase[]) => {
     supabaseAdmin.from("topics").select("id, name"),
   ]);
 
+  if (wordsRes.error || attemptsRes.error || quizTopicsRes.error || topicsRes.error) {
+    const message = [
+      wordsRes.error ? `questions: ${wordsRes.error.message}` : null,
+      attemptsRes.error ? `quiz_attempts: ${attemptsRes.error.message}` : null,
+      quizTopicsRes.error ? `quiz_topics: ${quizTopicsRes.error.message}` : null,
+      topicsRes.error ? `topics: ${topicsRes.error.message}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    throw new Error(`Failed to enrich quizzes. ${message}`);
+  }
+
   const wordsByQuiz = new Map<number, number>();
-  for (const row of wordsRes.error ? [] : (wordsRes.data ?? [])) {
+  for (const row of wordsRes.data ?? []) {
     wordsByQuiz.set(row.quiz_id, (wordsByQuiz.get(row.quiz_id) ?? 0) + (row.word_count ?? 0));
   }
 
   const completionsByQuiz = new Map<number, number>();
-  for (const row of attemptsRes.error ? [] : (attemptsRes.data ?? [])) {
+  for (const row of attemptsRes.data ?? []) {
     completionsByQuiz.set(row.quiz_id, (completionsByQuiz.get(row.quiz_id) ?? 0) + 1);
   }
 
   const topicNameById = new Map<number, string>();
-  for (const topic of topicsRes.error ? [] : (topicsRes.data ?? [])) {
+  for (const topic of topicsRes.data ?? []) {
     topicNameById.set(topic.id, topic.name);
   }
 
   const topicsByQuiz = new Map<number, string[]>();
-  for (const row of quizTopicsRes.error ? [] : (quizTopicsRes.data ?? [])) {
+  for (const row of quizTopicsRes.data ?? []) {
     const topicName = topicNameById.get(row.topic_id);
     if (!topicName) continue;
     const list = topicsByQuiz.get(row.quiz_id) ?? [];

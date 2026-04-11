@@ -79,9 +79,7 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
   }
 
   in(column: string, values: Array<string | number>) {
-    const normalized = values
-      .map((value) => (typeof value === "number" ? String(value) : `"${String(value).replace(/"/g, "")}"`))
-      .join(",");
+    const normalized = values.map((value) => String(value).replace(/[(),]/g, "")).join(",");
     this.params.set(column, `in.(${normalized})`);
     return this;
   }
