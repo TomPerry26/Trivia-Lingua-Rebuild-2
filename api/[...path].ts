@@ -250,21 +250,34 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
 
-    let enriched = await enrichQuizzes((data ?? []) as QuizBase[]);
+    const baseQuizzes = (data ?? []) as QuizBase[];
 
     if (sort === "popular") {
+      const enriched = await enrichQuizzes(baseQuizzes);
       enriched.sort((a, b) => (b.completions ?? 0) - (a.completions ?? 0));
-    } else if (sort === "a-z") {
-      enriched.sort((a, b) => a.title.localeCompare(b.title));
-    } else {
-      enriched.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+      const paginated = enriched.slice(offset, offset + limit);
+
+      return jsonOk({
+        quizzes: paginated,
+        total: enriched.length,
+        limit,
+        offset,
+      });
     }
 
-    const paginated = enriched.slice(offset, offset + limit);
+    const sortedBase = [...baseQuizzes];
+    if (sort === "a-z") {
+      sortedBase.sort((a, b) => a.title.localeCompare(b.title));
+    } else {
+      sortedBase.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    }
+
+    const paginatedBase = sortedBase.slice(offset, offset + limit);
+    const paginated = await enrichQuizzes(paginatedBase);
 
     return jsonOk({
       quizzes: paginated,
-      total: enriched.length,
+      total: sortedBase.length,
       limit,
       offset,
     });
