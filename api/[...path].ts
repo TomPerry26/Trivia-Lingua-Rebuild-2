@@ -172,7 +172,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  if (path === "quizzes/paginated") {
+  if (path === "quizzes/paginated" || path === "quizzes/paginated/" || path === "quizzes") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
     const url = new URL(req.url, "http://localhost");
