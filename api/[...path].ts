@@ -15,6 +15,13 @@ const parseCsv = (value: string | null) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const normalizeTopicKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const normalizeSort = (sort: string | null): "latest" | "popular" | "a-z" => {
   if (sort === "popular" || sort === "a-z") return sort;
   return "latest";
@@ -173,7 +180,10 @@ export default async function handler(req: Request): Promise<Response> {
       homeRowQuizResults.map(async (result, index) => {
         const enriched = await enrichQuizzes((result.data ?? []) as QuizBase[]);
         const topicTag = rows[index]?.topic_tag;
-        const filtered = topicTag ? enriched.filter((quiz) => quiz.topics.includes(topicTag)) : enriched;
+        const normalizedTag = topicTag ? normalizeTopicKey(topicTag) : null;
+        const filtered = normalizedTag
+          ? enriched.filter((quiz) => quiz.topics.some((topic) => normalizeTopicKey(String(topic)) === normalizedTag))
+          : enriched;
         return filtered.slice(0, HOME_ROW_QUIZ_LIMIT);
       }),
     );
@@ -209,9 +219,9 @@ export default async function handler(req: Request): Promise<Response> {
 
     let enriched = await enrichQuizzes((data ?? []) as QuizBase[]);
     if (topicsFilter.length > 0) {
-      const normalizedTopicsFilter = topicsFilter.map((topic) => topic.trim().toLowerCase());
+      const normalizedTopicsFilter = topicsFilter.map((topic) => normalizeTopicKey(topic));
       enriched = enriched.filter((quiz) =>
-        quiz.topics.some((topic) => normalizedTopicsFilter.includes(String(topic).trim().toLowerCase())),
+        quiz.topics.some((topic) => normalizedTopicsFilter.includes(normalizeTopicKey(String(topic)))),
       );
     }
 
