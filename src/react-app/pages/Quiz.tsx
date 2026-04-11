@@ -71,7 +71,7 @@ export default function QuizPage() {
   
   // Extract quiz ID from either format: /quiz/:id or /es/quiz/:slugWithId
   const extractedId = params.slugWithId ? extractIdFromSlug(params.slugWithId) : null;
-  const quizId = params.id ?? (extractedId !== null ? String(extractedId) : null);
+  const quizId = params.id ?? extractedId;
   const { user, isPending: authPending, redirectToLogin } = useAuth();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [hasQuizAccess, setHasQuizAccess] = useState(true);

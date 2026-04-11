@@ -49,15 +49,17 @@ export function generateSlug(title: string, maxWords: number = 5): string {
  * // Returns: "/quiz/387" (fallback when no slug)
  */
 export function buildQuizUrl(
-  slugOrQuiz: string | { id: number; url_slug?: string | null; title?: string },
+  slugOrQuiz: string | { id: number | string; url_slug?: string | null; title?: string },
   language: string = 'es'
 ): string {
   // Handle quiz object
   if (typeof slugOrQuiz === 'object') {
     const quiz = slugOrQuiz;
     if (quiz.url_slug) {
-      // Ensure slug includes trailing numeric ID for reliable route parsing.
-      const hasTrailingId = /-\d+$/.test(quiz.url_slug);
+      // Ensure slug includes a trailing ID for reliable route parsing (numeric or UUID).
+      const hasTrailingId = /-(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(
+        quiz.url_slug,
+      );
       const normalizedSlug = hasTrailingId ? quiz.url_slug : `${quiz.url_slug}-${quiz.id}`;
       return `/${language}/quiz/${normalizedSlug}`;
     }
@@ -74,15 +76,18 @@ export function buildQuizUrl(
  * Extracts the quiz ID from a slug-based URL parameter
  * 
  * @param slugWithId - The slug with ID appended (e.g., "harry-potter-quotes-387")
- * @returns The numeric quiz ID, or null if not found
+ * @returns The quiz ID (numeric or UUID), or null if not found
  * 
  * @example
  * extractIdFromSlug("harry-potter-quotes-387")
  * // Returns: 387
  */
-export function extractIdFromSlug(slugWithId: string): number | null {
-  const parts = slugWithId.split('-');
-  const lastPart = parts[parts.length - 1];
-  const id = parseInt(lastPart, 10);
-  return isNaN(id) ? null : id;
+export function extractIdFromSlug(slugWithId: string): string | null {
+  const uuidMatch = slugWithId.match(/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i);
+  if (uuidMatch) return uuidMatch[1];
+
+  const numericMatch = slugWithId.match(/-(\d+)$/);
+  if (numericMatch) return numericMatch[1];
+
+  return null;
 }
