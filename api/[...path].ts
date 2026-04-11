@@ -68,35 +68,38 @@ const enrichQuizzes = async (quizzes: QuizBase[]) => {
     throw new Error(`Failed to enrich quizzes. ${message}`);
   }
 
-  const wordsByQuiz = new Map<number, number>();
+  const wordsByQuiz = new Map<string, number>();
   for (const row of wordsRes.data ?? []) {
-    wordsByQuiz.set(row.quiz_id, (wordsByQuiz.get(row.quiz_id) ?? 0) + (row.word_count ?? 0));
+    const quizId = String(row.quiz_id);
+    wordsByQuiz.set(quizId, (wordsByQuiz.get(quizId) ?? 0) + (row.word_count ?? 0));
   }
 
-  const completionsByQuiz = new Map<number, number>();
+  const completionsByQuiz = new Map<string, number>();
   for (const row of attemptsRes.data ?? []) {
-    completionsByQuiz.set(row.quiz_id, (completionsByQuiz.get(row.quiz_id) ?? 0) + 1);
+    const quizId = String(row.quiz_id);
+    completionsByQuiz.set(quizId, (completionsByQuiz.get(quizId) ?? 0) + 1);
   }
 
-  const topicNameById = new Map<number, string>();
+  const topicNameById = new Map<string, string>();
   for (const topic of topicsRes.data ?? []) {
-    topicNameById.set(topic.id, topic.name);
+    topicNameById.set(String(topic.id), topic.name);
   }
 
-  const topicsByQuiz = new Map<number, string[]>();
+  const topicsByQuiz = new Map<string, string[]>();
   for (const row of quizTopicsRes.data ?? []) {
-    const topicName = topicNameById.get(row.topic_id);
+    const topicName = topicNameById.get(String(row.topic_id));
     if (!topicName) continue;
-    const list = topicsByQuiz.get(row.quiz_id) ?? [];
+    const quizId = String(row.quiz_id);
+    const list = topicsByQuiz.get(quizId) ?? [];
     list.push(topicName);
-    topicsByQuiz.set(row.quiz_id, list);
+    topicsByQuiz.set(quizId, list);
   }
 
   return quizzes.map((quiz) => ({
     ...quiz,
-    topics: topicsByQuiz.get(quiz.id) ?? (quiz.topic ? [quiz.topic] : []),
-    total_word_count: wordsByQuiz.get(quiz.id) ?? 0,
-    completions: completionsByQuiz.get(quiz.id) ?? 0,
+    topics: topicsByQuiz.get(String(quiz.id)) ?? (quiz.topic ? [quiz.topic] : []),
+    total_word_count: wordsByQuiz.get(String(quiz.id)) ?? 0,
+    completions: completionsByQuiz.get(String(quiz.id)) ?? 0,
   }));
 };
 
