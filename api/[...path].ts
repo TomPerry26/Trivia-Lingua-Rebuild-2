@@ -232,7 +232,13 @@ export default async function handler(req: Request): Promise<Response> {
       const quizTopicsRes = await supabaseAdmin.from("quiz_topics").select("quiz_id, topic_id").in("topic_id", matchedTopicIds);
       if (quizTopicsRes.error) return jsonError("Failed to fetch quiz topics for filtering", 500, quizTopicsRes.error);
 
-      const matchedQuizIds = Array.from(new Set((quizTopicsRes.data ?? []).map((row) => row.quiz_id)));
+      const matchedQuizIds = Array.from(
+        new Set(
+          (quizTopicsRes.data ?? [])
+            .map((row) => row.quiz_id)
+            .filter((quizId) => quizId !== null && quizId !== undefined && String(quizId).trim().toLowerCase() !== "null"),
+        ),
+      );
       if (matchedQuizIds.length === 0) {
         return jsonOk({ quizzes: [], total: 0, limit, offset });
       }
