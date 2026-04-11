@@ -203,7 +203,7 @@ export default async function handler(req: Request): Promise<Response> {
       dataQuery = dataQuery.in("difficulty", difficultiesFilter);
     }
 
-    const { data, error } = await dataQuery.order("created_at", { ascending: false });
+    const { data, error } = await dataQuery.limit(5000).order("created_at", { ascending: false });
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
 
