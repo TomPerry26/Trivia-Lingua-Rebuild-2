@@ -213,17 +213,35 @@ export default async function handler(req: Request): Promise<Response> {
       dataQuery = dataQuery.in("difficulty", difficultiesFilter);
     }
 
-    const { data, error } = await dataQuery.limit(5000).order("created_at", { ascending: false });
+    if (topicsFilter.length > 0) {
+      const topicsRes = await supabaseAdmin.from("topics").select("id, name");
+      if (topicsRes.error) return jsonError("Failed to fetch topics for filtering", 500, topicsRes.error);
+
+      const normalizedTopicsFilter = new Set(topicsFilter.map((topic) => normalizeTopicKey(topic)));
+      const matchedTopicIds = (topicsRes.data ?? [])
+        .filter((topic) => normalizedTopicsFilter.has(normalizeTopicKey(topic.name)))
+        .map((topic) => topic.id);
+
+      if (matchedTopicIds.length === 0) {
+        return jsonOk({ quizzes: [], total: 0, limit, offset });
+      }
+
+      const quizTopicsRes = await supabaseAdmin.from("quiz_topics").select("quiz_id, topic_id").in("topic_id", matchedTopicIds);
+      if (quizTopicsRes.error) return jsonError("Failed to fetch quiz topics for filtering", 500, quizTopicsRes.error);
+
+      const matchedQuizIds = Array.from(new Set((quizTopicsRes.data ?? []).map((row) => row.quiz_id)));
+      if (matchedQuizIds.length === 0) {
+        return jsonOk({ quizzes: [], total: 0, limit, offset });
+      }
+
+      dataQuery = dataQuery.in("id", matchedQuizIds);
+    }
+
+    const { data, error } = await dataQuery.order("created_at", { ascending: false });
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
 
     let enriched = await enrichQuizzes((data ?? []) as QuizBase[]);
-    if (topicsFilter.length > 0) {
-      const normalizedTopicsFilter = topicsFilter.map((topic) => normalizeTopicKey(topic));
-      enriched = enriched.filter((quiz) =>
-        quiz.topics.some((topic) => normalizedTopicsFilter.includes(normalizeTopicKey(String(topic)))),
-      );
-    }
 
     if (sort === "popular") {
       enriched.sort((a, b) => (b.completions ?? 0) - (a.completions ?? 0));
