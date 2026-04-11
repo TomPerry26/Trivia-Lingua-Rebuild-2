@@ -244,7 +244,29 @@ const createAuthClient = (url: string, key: string) => {
       if (options?.redirectTo) {
         oauthUrl.searchParams.set("redirect_to", options.redirectTo);
       }
-      const href = oauthUrl.toString();
+
+      // Ask Supabase for the provider redirect URL first so disabled providers
+      // return a handled error instead of hard-navigating to a JSON error page.
+      oauthUrl.searchParams.set("skip_http_redirect", "true");
+
+      let href = oauthUrl.toString();
+      try {
+        const response = await fetch(href, {
+          headers: authHeaders,
+        });
+        const payload = (await response.json().catch(() => ({}))) as { url?: string; msg?: string; message?: string };
+        if (!response.ok || !payload.url) {
+          return {
+            data: { provider, url: href },
+            error: toError(payload.msg || payload.message || `OAuth authorization failed. HTTP ${response.status}.`, response.status),
+          };
+        }
+        href = payload.url;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "OAuth authorization request failed.";
+        return { data: { provider, url: href }, error: toError(message) };
+      }
+
       if (!options?.skipBrowserRedirect && typeof window !== "undefined") {
         window.location.assign(href);
       }

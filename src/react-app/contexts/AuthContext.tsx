@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Session, User } from "../../shared/supabase-client";
 import { supabase } from "@/react-app/lib/supabase";
 
-type SignInProvider = "google";
+type SignInProvider = string;
+const DEFAULT_OAUTH_PROVIDER = import.meta.env.VITE_SUPABASE_OAUTH_PROVIDER || "google";
 
 interface AuthContextValue {
   user: User | null;
@@ -52,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (provider: SignInProvider = "google") => {
+  const signIn = useCallback(async (provider: SignInProvider = DEFAULT_OAUTH_PROVIDER) => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
