@@ -30,6 +30,13 @@ type OAuthOptions = {
 };
 
 const toError = (message: string, status?: number): SupabaseError => ({ message, status });
+const formatOAuthProviderError = (provider: string, message?: string) => {
+  if (!message) return `OAuth authorization failed for provider "${provider}".`;
+  if (/unsupported provider/i.test(message)) {
+    return `OAuth provider "${provider}" is not enabled in Supabase Auth. Enable it in Supabase, or set VITE_SUPABASE_OAUTH_PROVIDER to a provider that is enabled.`;
+  }
+  return message;
+};
 
 class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
   private method: "GET" | "POST" | "PATCH" | "DELETE" = "GET";
@@ -289,9 +296,10 @@ const createAuthClient = (url: string, key: string) => {
         });
         const payload = (await response.json().catch(() => ({}))) as { url?: string; msg?: string; message?: string };
         if (!response.ok || !payload.url) {
+          const providerError = formatOAuthProviderError(provider, payload.msg || payload.message);
           return {
             data: { provider, url: href },
-            error: toError(payload.msg || payload.message || `OAuth authorization failed. HTTP ${response.status}.`, response.status),
+            error: toError(providerError || `OAuth authorization failed. HTTP ${response.status}.`, response.status),
           };
         }
         href = payload.url;
