@@ -11,6 +11,7 @@ import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
+import { supabase } from "@/react-app/lib/supabase";
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -22,6 +23,21 @@ function getGuestSessionId(): string {
     localStorage.setItem(storageKey, sessionId);
   }
   return sessionId;
+}
+
+async function fetchWithSupabaseAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const headers = new Headers(init?.headers);
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return fetch(input, {
+    ...init,
+    headers,
+  });
 }
 
 interface Question {
@@ -54,7 +70,8 @@ export default function QuizPage() {
   const navigate = useNavigate();
   
   // Extract quiz ID from either format: /quiz/:id or /es/quiz/:slugWithId
-  const quizId = params.id || (params.slugWithId ? String(extractIdFromSlug(params.slugWithId)) : null);
+  const extractedId = params.slugWithId ? extractIdFromSlug(params.slugWithId) : null;
+  const quizId = params.id ?? extractedId;
   const { user, isPending: authPending, redirectToLogin } = useAuth();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [hasQuizAccess, setHasQuizAccess] = useState(true);
@@ -81,7 +98,7 @@ export default function QuizPage() {
         // Get user's access level
         let accessLevel: AccessLevel = 'guest';
         if (user) {
-          const profileResponse = await fetch('/api/users/me');
+          const profileResponse = await fetchWithSupabaseAuth('/api/users/me');
           if (profileResponse.ok) {
             const profileData = await profileResponse.json();
             accessLevel = profileData.access_level || 'member';
@@ -91,7 +108,12 @@ export default function QuizPage() {
         }
 
         // Fetch the quiz
-        const quizResponse = await fetch(`/api/quizzes/${quizId}`);
+        if (!quizId) {
+          setLoading(false);
+          return;
+        }
+
+        const quizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
@@ -197,7 +219,7 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quizzes/${data.nextQuizId}`);
+              const nextQuizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);

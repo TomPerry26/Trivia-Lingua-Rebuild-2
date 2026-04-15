@@ -3,6 +3,12 @@ import { createRoot } from "react-dom/client";
 import "@/react-app/index.css";
 import App from "@/react-app/App.tsx";
 
+// Migrate legacy hash-based URLs (/#/path) to BrowserRouter paths (/path)
+if (window.location.hash.startsWith("#/")) {
+  const migratedPath = window.location.hash.slice(1);
+  window.history.replaceState(null, "", `${migratedPath}${window.location.search}`);
+}
+
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

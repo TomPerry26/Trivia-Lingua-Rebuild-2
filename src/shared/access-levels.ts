@@ -16,8 +16,8 @@ export function hasAccess(
 ): boolean {
   // Default user level to 'guest' if not provided
   const effectiveUserLevel = userLevel || 'guest';
-  // Default required level to 'member' if not provided
-  const effectiveRequiredLevel = requiredLevel || 'member';
+  // Default required level to 'guest' if not provided
+  const effectiveRequiredLevel = requiredLevel || 'guest';
   
   return ACCESS_LEVELS[effectiveUserLevel] >= ACCESS_LEVELS[effectiveRequiredLevel];
 }

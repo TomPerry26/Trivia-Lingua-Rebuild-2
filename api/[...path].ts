@@ -3,13 +3,24 @@ import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
 
-const getPath = (req: Request) => new URL(req.url).pathname.replace(/^\/api\/?/, "");
+export const config = {
+  runtime: "edge",
+};
+
+const getPath = (req: Request) => new URL(req.url, "http://localhost").pathname.replace(/^\/api\/?/, "");
 
 const parseCsv = (value: string | null) =>
   (value ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const normalizeTopicKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const normalizeSort = (sort: string | null): "latest" | "popular" | "a-z" => {
   if (sort === "popular" || sort === "a-z") return sort;
@@ -20,6 +31,76 @@ const getAuthToken = (req: Request): string | null => {
   const authHeader = req.headers.get("authorization");
   if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
   return null;
+};
+
+type QuizBase = {
+  id: number;
+  title: string;
+  difficulty: string | null;
+  status: string | null;
+  topic?: string | null;
+  min_access_level?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const enrichQuizzes = async (quizzes: QuizBase[]) => {
+  if (quizzes.length === 0) return [] as Array<QuizBase & { topics: string[]; total_word_count: number; completions: number }>;
+
+  const quizIds = quizzes.map((quiz) => quiz.id);
+
+  const [wordsRes, attemptsRes, quizTopicsRes, topicsRes] = await Promise.all([
+    supabaseAdmin.from("questions").select("quiz_id, word_count").in("quiz_id", quizIds),
+    supabaseAdmin.from("quiz_attempts").select("quiz_id").in("quiz_id", quizIds),
+    supabaseAdmin.from("quiz_topics").select("quiz_id, topic_id").in("quiz_id", quizIds),
+    supabaseAdmin.from("topics").select("id, name"),
+  ]);
+
+  if (wordsRes.error || attemptsRes.error || quizTopicsRes.error || topicsRes.error) {
+    const message = [
+      wordsRes.error ? `questions: ${wordsRes.error.message}` : null,
+      attemptsRes.error ? `quiz_attempts: ${attemptsRes.error.message}` : null,
+      quizTopicsRes.error ? `quiz_topics: ${quizTopicsRes.error.message}` : null,
+      topicsRes.error ? `topics: ${topicsRes.error.message}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    throw new Error(`Failed to enrich quizzes. ${message}`);
+  }
+
+  const wordsByQuiz = new Map<string, number>();
+  for (const row of wordsRes.data ?? []) {
+    const quizId = String(row.quiz_id);
+    wordsByQuiz.set(quizId, (wordsByQuiz.get(quizId) ?? 0) + (row.word_count ?? 0));
+  }
+
+  const completionsByQuiz = new Map<string, number>();
+  for (const row of attemptsRes.data ?? []) {
+    const quizId = String(row.quiz_id);
+    completionsByQuiz.set(quizId, (completionsByQuiz.get(quizId) ?? 0) + 1);
+  }
+
+  const topicNameById = new Map<string, string>();
+  for (const topic of topicsRes.data ?? []) {
+    topicNameById.set(String(topic.id), topic.name);
+  }
+
+  const topicsByQuiz = new Map<string, string[]>();
+  for (const row of quizTopicsRes.data ?? []) {
+    const topicName = topicNameById.get(String(row.topic_id));
+    if (!topicName) continue;
+    const quizId = String(row.quiz_id);
+    const list = topicsByQuiz.get(quizId) ?? [];
+    list.push(topicName);
+    topicsByQuiz.set(quizId, list);
+  }
+
+  return quizzes.map((quiz) => ({
+    ...quiz,
+    topics: topicsByQuiz.get(String(quiz.id)) ?? (quiz.topic ? [quiz.topic] : []),
+    total_word_count: wordsByQuiz.get(String(quiz.id)) ?? 0,
+    completions: completionsByQuiz.get(String(quiz.id)) ?? 0,
+  }));
 };
 
 const fallbackDifficultyContent = (slug: string) => {
@@ -42,7 +123,8 @@ const fallbackDifficultyContent = (slug: string) => {
 };
 
 export default async function handler(req: Request): Promise<Response> {
-  const path = getPath(req);
+  try {
+    const path = getPath(req);
 
   if (path === "topics") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
@@ -64,11 +146,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (path === "home-data") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const HOME_ROW_QUIZ_LIMIT = 12;
 
     const [latestRes, rowsRes] = await Promise.all([
       supabaseAdmin
         .from("quizzes")
-        .select("id, title, difficulty, status, topics, total_word_count, completions, created_at, updated_at")
+        .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
         .eq("status", "published")
         .order("created_at", { ascending: false })
         .limit(12),
@@ -78,16 +161,46 @@ export default async function handler(req: Request): Promise<Response> {
     if (latestRes.error) return jsonError("Failed to load latest quizzes", 500, latestRes.error);
     if (rowsRes.error) return jsonError("Failed to load home rows", 500, rowsRes.error);
 
+    const rows = rowsRes.data ?? [];
+    const enrichedLatest = await enrichQuizzes((latestRes.data ?? []) as QuizBase[]);
+
+    const homeRowQuizResults = await Promise.all(
+      rows.map((row) => {
+        return supabaseAdmin
+          .from("quizzes")
+          .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
+          .eq("status", "published")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(100);
+      }),
+    );
+
+    const homeRowError = homeRowQuizResults.find((result) => result.error);
+    if (homeRowError?.error) return jsonError("Failed to load home row quizzes", 500, homeRowError.error);
+
+    const enrichedRows = await Promise.all(
+      homeRowQuizResults.map(async (result, index) => {
+        const enriched = await enrichQuizzes((result.data ?? []) as QuizBase[]);
+        const topicTag = rows[index]?.topic_tag;
+        const normalizedTag = topicTag ? normalizeTopicKey(topicTag) : null;
+        const filtered = normalizedTag
+          ? enriched.filter((quiz) => quiz.topics.some((topic) => normalizeTopicKey(String(topic)) === normalizedTag))
+          : enriched;
+        return filtered.slice(0, HOME_ROW_QUIZ_LIMIT);
+      }),
+    );
+
     return jsonOk({
-      latestQuizzes: latestRes.data ?? [],
-      homeRows: (rowsRes.data ?? []).map((row) => ({ row, quizzes: [] })),
+      latestQuizzes: enrichedLatest,
+      homeRows: rows.map((row, index) => ({ row, quizzes: enrichedRows[index] ?? [] })),
     });
   }
 
-  if (path === "quizzes/paginated") {
+  if (path === "quizzes/paginated" || path === "quizzes/paginated/" || path === "quizzes") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const url = new URL(req.url);
+    const url = new URL(req.url, "http://localhost");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "24") || 24, 1), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? "0") || 0, 0);
     const difficultiesFilter = parseCsv(url.searchParams.get("difficulties"));
@@ -96,10 +209,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     let dataQuery = supabaseAdmin
       .from("quizzes")
-      .select(
-        "id, title, difficulty, status, topics, total_word_count, completions, min_access_level, created_at, updated_at",
-        { count: "exact" },
-      )
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .eq("status", "published");
 
     if (difficultiesFilter.length > 0) {
@@ -107,40 +217,98 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     if (topicsFilter.length > 0) {
-      const quotedTopics = topicsFilter.map((topic) => `"${topic.replace(/"/g, "")}"`);
-      dataQuery = dataQuery.overlaps("topics", quotedTopics);
+      const topicsRes = await supabaseAdmin.from("topics").select("id, name");
+      if (topicsRes.error) return jsonError("Failed to fetch topics for filtering", 500, topicsRes.error);
+
+      const normalizedTopicsFilter = new Set(topicsFilter.map((topic) => normalizeTopicKey(topic)));
+      const matchedTopicIds = (topicsRes.data ?? [])
+        .filter((topic) => normalizedTopicsFilter.has(normalizeTopicKey(topic.name)))
+        .map((topic) => topic.id);
+
+      if (matchedTopicIds.length === 0) {
+        return jsonOk({ quizzes: [], total: 0, limit, offset });
+      }
+
+      const quizTopicsRes = await supabaseAdmin.from("quiz_topics").select("quiz_id, topic_id").in("topic_id", matchedTopicIds);
+      if (quizTopicsRes.error) return jsonError("Failed to fetch quiz topics for filtering", 500, quizTopicsRes.error);
+
+      const matchedQuizIds = Array.from(
+        new Set(
+          (quizTopicsRes.data ?? [])
+            .map((row) => row.quiz_id)
+            .filter((quizId) => quizId !== null && quizId !== undefined && String(quizId).trim().toLowerCase() !== "null"),
+        ),
+      );
+      if (matchedQuizIds.length === 0) {
+        return jsonOk({ quizzes: [], total: 0, limit, offset });
+      }
+
+      dataQuery = dataQuery.in("id", matchedQuizIds);
     }
 
-    if (sort === "popular") {
-      dataQuery = dataQuery.order("completions", { ascending: false, nullsFirst: false });
-    } else if (sort === "a-z") {
-      dataQuery = dataQuery.order("title", { ascending: true });
-    } else {
-      dataQuery = dataQuery.order("created_at", { ascending: false });
-    }
-
-    const { data, error, count } = await dataQuery.range(offset, offset + limit - 1);
+    const { data, error } = await dataQuery.order("created_at", { ascending: false });
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
 
+    const baseQuizzes = (data ?? []) as QuizBase[];
+
+    if (sort === "popular") {
+      const attemptsRes = await supabaseAdmin.from("quiz_attempts").select("quiz_id");
+      if (attemptsRes.error) return jsonError("Failed to fetch quiz completion counts", 500, attemptsRes.error);
+
+      const candidateIds = new Set(baseQuizzes.map((quiz) => String(quiz.id)));
+      const completionsByQuiz = new Map<string, number>();
+      for (const row of attemptsRes.data ?? []) {
+        const quizId = String(row.quiz_id);
+        if (!candidateIds.has(quizId)) continue;
+        completionsByQuiz.set(quizId, (completionsByQuiz.get(quizId) ?? 0) + 1);
+      }
+
+      const sortedBase = [...baseQuizzes].sort(
+        (a, b) => (completionsByQuiz.get(String(b.id)) ?? 0) - (completionsByQuiz.get(String(a.id)) ?? 0),
+      );
+      const paginatedBase = sortedBase.slice(offset, offset + limit);
+      const paginated = await enrichQuizzes(paginatedBase);
+
+      return jsonOk({
+        quizzes: paginated,
+        total: sortedBase.length,
+        limit,
+        offset,
+      });
+    }
+
+    const sortedBase = [...baseQuizzes];
+    if (sort === "a-z") {
+      sortedBase.sort((a, b) => a.title.localeCompare(b.title));
+    } else {
+      sortedBase.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    }
+
+    const paginatedBase = sortedBase.slice(offset, offset + limit);
+    const paginated = await enrichQuizzes(paginatedBase);
+
     return jsonOk({
-      quizzes: data ?? [],
-      total: count ?? 0,
+      quizzes: paginated,
+      total: sortedBase.length,
       limit,
       offset,
     });
   }
 
-  const quizByIdMatch = path.match(/^quizzes\/(\d+)$/);
-  if (quizByIdMatch) {
+  const quizIdFromQuery =
+    path === "quiz" ? new URL(req.url, "http://localhost").searchParams.get("quiz_id") ?? new URL(req.url, "http://localhost").searchParams.get("id") : null;
+  const quizByIdMatch = path.match(/^quizzes\/([^/]+)$/);
+  if (quizByIdMatch || quizIdFromQuery) {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
-    const quizId = Number(quizByIdMatch[1]);
+    const quizId = decodeURIComponent(quizIdFromQuery ?? quizByIdMatch?.[1] ?? "");
+    if (!quizId) return jsonError("quiz_id is required", 400);
 
     const [quizRes, questionsRes] = await Promise.all([
       supabaseAdmin
         .from("quizzes")
-        .select("id, title, topic, topics, difficulty, min_access_level, status, total_word_count, completions, created_at, updated_at")
+        .select("id, title, topic, difficulty, status, min_access_level, created_at, updated_at")
         .eq("id", quizId)
         .single(),
       supabaseAdmin
@@ -155,10 +323,11 @@ export default async function handler(req: Request): Promise<Response> {
     if (quizRes.error) return jsonError("Failed to fetch quiz", 500, quizRes.error);
     if (!quizRes.data) return jsonError("Quiz not found", 404);
     if (questionsRes.error) return jsonError("Failed to fetch quiz questions", 500, questionsRes.error);
+    const [enrichedQuiz] = await enrichQuizzes([quizRes.data as QuizBase]);
 
     return jsonOk({
-      ...quizRes.data,
-      topic: quizRes.data.topic ?? (Array.isArray(quizRes.data.topics) ? quizRes.data.topics[0] : ""),
+      ...enrichedQuiz,
+      topic: enrichedQuiz.topic ?? (Array.isArray(enrichedQuiz.topics) ? enrichedQuiz.topics[0] : ""),
       questions: questionsRes.data ?? [],
     });
   }
@@ -359,16 +528,17 @@ export default async function handler(req: Request): Promise<Response> {
 
     const quizzesRes = await supabaseAdmin
       .from("quizzes")
-      .select("topics")
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .eq("status", "published")
       .eq("difficulty", difficulty.name)
       .limit(100);
 
     if (quizzesRes.error) return jsonError("Failed to fetch related topics", 500, quizzesRes.error);
+    const enrichedQuizzes = await enrichQuizzes((quizzesRes.data ?? []) as QuizBase[]);
 
     const topics = Array.from(
       new Set(
-        (quizzesRes.data ?? [])
+        enrichedQuizzes
           .flatMap((quiz) => (Array.isArray(quiz.topics) ? quiz.topics : []))
           .map((topic) => String(topic).trim().toLowerCase().replace(/\s+/g, "-"))
           .filter(Boolean),
@@ -449,6 +619,76 @@ export default async function handler(req: Request): Promise<Response> {
       id: data.user.id,
       email: data.user.email,
       access_level: data.user.user_metadata?.access_level ?? null,
+    });
+  }
+
+  if (path === "progress") {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const url = new URL(req.url, "http://localhost");
+    const localDate = url.searchParams.get("local_date") ?? new Date().toISOString().slice(0, 10);
+    const token = getAuthToken(req);
+    if (!token) {
+      return jsonOk({
+        daily_words_read: 0,
+        total_words_read: 0,
+        current_streak: 0,
+        longest_streak: 0,
+        total_quizzes_completed: 0,
+        daily_target: 1000,
+        last_activity_date: null,
+        quiz_words: 0,
+        external_words: 0,
+      });
+    }
+
+    const userRes = await supabaseAnon.auth.getUser(token);
+    const user = userRes.data.user;
+    if (!user) {
+      return jsonOk({
+        daily_words_read: 0,
+        total_words_read: 0,
+        current_streak: 0,
+        longest_streak: 0,
+        total_quizzes_completed: 0,
+        daily_target: 1000,
+        last_activity_date: null,
+        quiz_words: 0,
+        external_words: 0,
+      });
+    }
+
+    const [progressRes, externalRes] = await Promise.all([
+      supabaseAdmin
+        .from("user_progress")
+        .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("external_reading_logs")
+        .select("words_read")
+        .eq("user_id", user.id)
+        .eq("reading_date", localDate),
+    ]);
+
+    if (progressRes.error) return jsonError("Failed to fetch user progress", 500, progressRes.error);
+    if (externalRes.error) return jsonError("Failed to fetch external reading progress", 500, externalRes.error);
+
+    const progress = progressRes.data ?? {
+      daily_words_read: 0,
+      total_words_read: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      total_quizzes_completed: 0,
+      daily_target: 1000,
+      last_activity_date: null,
+    };
+    const externalWords = (externalRes.data ?? []).reduce((sum, row) => sum + (row.words_read ?? 0), 0);
+
+    return jsonOk({
+      ...progress,
+      quiz_words: progress.daily_words_read ?? 0,
+      external_words: externalWords,
     });
   }
 
@@ -538,11 +778,11 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data, error } = await supabaseAdmin
       .from("quizzes")
-      .select("id, title, difficulty, status, topics, total_word_count, completions, created_at, updated_at")
+      .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
       .order("id", { ascending: false });
 
     if (error) return jsonError("Failed to fetch quizzes", 500, error);
-    return jsonOk(data ?? []);
+    return jsonOk(await enrichQuizzes((data ?? []) as QuizBase[]));
   }
 
   if (path === "admin/quizzes/bulk-export-all") {
@@ -550,19 +790,35 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data, error } = await supabaseAdmin
       .from("questions")
-      .select(
-        "quiz_id, question_order, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, quizzes(title,difficulty,topics)",
-      )
+      .select("quiz_id, question_order, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, quizzes(title,difficulty)")
       .order("quiz_id", { ascending: true })
       .order("question_order", { ascending: true });
 
     if (error) return jsonError("Failed to export quizzes", 500, error);
 
+    const quizIds = Array.from(new Set((data ?? []).map((item) => item.quiz_id).filter(Boolean)));
+    const [quizTopicsRes, topicsRes] = await Promise.all([
+      supabaseAdmin.from("quiz_topics").select("quiz_id, topic_id").in("quiz_id", quizIds),
+      supabaseAdmin.from("topics").select("id, name"),
+    ]);
+    if (quizTopicsRes.error) return jsonError("Failed to fetch quiz topics", 500, quizTopicsRes.error);
+    if (topicsRes.error) return jsonError("Failed to fetch topics", 500, topicsRes.error);
+
+    const topicNameById = new Map<number, string>((topicsRes.data ?? []).map((topic) => [topic.id, topic.name]));
+    const topicsByQuiz = new Map<number, string[]>();
+    for (const row of quizTopicsRes.data ?? []) {
+      const topicName = topicNameById.get(row.topic_id);
+      if (!topicName) continue;
+      const list = topicsByQuiz.get(row.quiz_id) ?? [];
+      list.push(topicName);
+      topicsByQuiz.set(row.quiz_id, list);
+    }
+
     const rows = (data ?? []).map((item) => ({
       quiz_id: item.quiz_id,
       quiz_title: item.quizzes?.title ?? "",
       difficulty: item.quizzes?.difficulty ?? "",
-      topics: Array.isArray(item.quizzes?.topics) ? item.quizzes.topics.join(",") : "",
+      topics: (topicsByQuiz.get(item.quiz_id) ?? []).join(","),
       question_number: item.question_order,
       question_text: item.question_text,
       option_a: item.option_a,
@@ -590,5 +846,16 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  return jsonError(`No API route found for /api/${path}`, 404);
+    return jsonError(`No API route found for /api/${path}`, 404);
+  } catch (error) {
+    const details =
+      error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          }
+        : error;
+    return jsonError("Unhandled API route error", 500, details);
+  }
 }

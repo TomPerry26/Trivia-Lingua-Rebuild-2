@@ -33,11 +33,19 @@ async function fetchQuizzes(
   
   queryParams.append("sort", params.sortBy);
   
-  const response = await fetch(`/api/quizzes/paginated?${queryParams.toString()}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch quizzes");
+  const primaryResponse = await fetch(`/api/quizzes/paginated?${queryParams.toString()}`);
+  if (primaryResponse.ok) {
+    return primaryResponse.json();
   }
-  return response.json();
+
+  if (primaryResponse.status === 404) {
+    const fallbackResponse = await fetch(`/api/quizzes?${queryParams.toString()}`);
+    if (fallbackResponse.ok) {
+      return fallbackResponse.json();
+    }
+  }
+
+  throw new Error("Failed to fetch quizzes");
 }
 
 export function useQuizzesPaginated(
