@@ -78,8 +78,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.jpg') ||
     url.pathname.endsWith('.jpeg') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.webp') ||
-    url.pathname.includes('mochausercontent.com')
+    url.pathname.endsWith('.webp')
   ) {
     event.respondWith(
       caches.match(request)

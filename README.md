@@ -1,7 +1,6 @@
 ## Trivia Lingua
 
-This app was created using https://getmocha.com.
-Need help or want to join the community? Join our [Discord](https://discord.gg/shDEGBSe2d).
+Trivia Lingua is a Vite + React app deployed on Vercel with Supabase for auth/data.
 
 ## Local development
 
@@ -21,6 +20,9 @@ Required client variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_OAUTH_PROVIDER` (e.g. `google` or `github`; must be enabled in Supabase Auth)
+- `VITE_PUBLIC_SITE_URL` (for canonical/meta URLs, e.g. `https://www.trivialingua.com`)
+- `VITE_OG_IMAGE_URL` (optional override for social preview image)
 
 > `VITE_` variables are bundled into browser code by Vite, so only the **anon** key should use this prefix.
 
@@ -36,6 +38,9 @@ npm run dev
 - Configure the following environment variables in your Vercel project settings:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+  - `VITE_SUPABASE_OAUTH_PROVIDER`
+  - `VITE_PUBLIC_SITE_URL`
+  - `VITE_OG_IMAGE_URL`
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`

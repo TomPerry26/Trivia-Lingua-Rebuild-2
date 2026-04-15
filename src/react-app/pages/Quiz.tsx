@@ -12,6 +12,7 @@ import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
 import { supabase } from "@/react-app/lib/supabase";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -456,8 +457,8 @@ export default function QuizPage() {
         <MetaTags
           title={`${quiz.title} - Trivia Lingua`}
           description={quizMetaDescription}
-          url={`https://k3ssqlqvt37e2.mocha.app${quizUrl}`}
-          image="https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg"
+          url={`${SITE_URL}${quizUrl}`}
+          image={OG_IMAGE_URL}
         />
         <QuizSchema quiz={quiz} />
         <div className="max-w-3xl mx-auto">

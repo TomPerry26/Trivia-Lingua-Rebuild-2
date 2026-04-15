@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback(async () => {
-    await signIn("google");
+    await signIn(DEFAULT_OAUTH_PROVIDER);
   }, [signIn]);
 
   const value = useMemo(
