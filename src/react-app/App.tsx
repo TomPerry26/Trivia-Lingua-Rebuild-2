@@ -1,4 +1,4 @@
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
 import { AuthProvider } from "@/react-app/contexts/AuthContext";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";

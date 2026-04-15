@@ -11,6 +11,13 @@ export default function AuthCallbackPage() {
     const handleCallback = async () => {
       try {
         const callbackUrl = window.location.href;
+        const searchParams = new URLSearchParams(window.location.search);
+        const callbackError = searchParams.get("error");
+        const callbackErrorDescription = searchParams.get("error_description");
+        if (callbackError) {
+          throw new Error(callbackErrorDescription || callbackError);
+        }
+
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const hasTokenHash = hashParams.has("access_token") && hashParams.has("refresh_token");
 

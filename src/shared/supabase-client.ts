@@ -35,6 +35,7 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
   private method: "GET" | "POST" | "PATCH" | "DELETE" = "GET";
   private body: unknown;
   private readonly params = new URLSearchParams();
+  private rowMode: "many" | "single" | "maybeSingle" = "many";
 
   constructor(
     private readonly url: string,
@@ -77,6 +78,34 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
     return this;
   }
 
+  in(column: string, values: Array<string | number>) {
+    const normalized = values.map((value) => String(value).replace(/[(),]/g, "")).join(",");
+    this.params.set(column, `in.(${normalized})`);
+    return this;
+  }
+
+  gt(column: string, value: string | number) {
+    this.params.set(column, `gt.${value}`);
+    return this;
+  }
+
+  is(column: string, value: "null" | boolean | string | number) {
+    this.params.set(column, `is.${value}`);
+    return this;
+  }
+
+  contains(column: string, values: string[]) {
+    const normalized = values.map((value) => `"${String(value).replace(/"/g, "")}"`).join(",");
+    this.params.set(column, `cs.{${normalized}}`);
+    return this;
+  }
+
+  overlaps(column: string, values: string[]) {
+    const normalized = values.map((value) => `"${String(value).replace(/"/g, "")}"`).join(",");
+    this.params.set(column, `ov.{${normalized}}`);
+    return this;
+  }
+
   order(column: string, options?: { ascending?: boolean }) {
     const direction = options?.ascending === false ? "desc" : "asc";
     const existing = this.params.get("order");
@@ -87,6 +116,24 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
 
   limit(count: number) {
     this.params.set("limit", String(count));
+    return this;
+  }
+
+  range(from: number, to: number) {
+    this.params.set("offset", String(Math.max(from, 0)));
+    this.params.set("limit", String(Math.max(to - from + 1, 0)));
+    return this;
+  }
+
+  single() {
+    this.rowMode = "single";
+    this.limit(1);
+    return this;
+  }
+
+  maybeSingle() {
+    this.rowMode = "maybeSingle";
+    this.limit(1);
     return this;
   }
 
@@ -112,6 +159,14 @@ class QueryBuilder<T = unknown> implements PromiseLike<SupabaseResponse<T>> {
         return { data: null as T, error: toError(message, response.status) };
       }
 
+      if (this.rowMode !== "many") {
+        const firstRow = Array.isArray(parsed) ? parsed[0] ?? null : parsed;
+        if (this.rowMode === "single" && firstRow == null) {
+          return { data: null as T, error: toError("Expected a single row but none found.", 404) };
+        }
+        return { data: firstRow as T, error: null };
+      }
+
       return { data: parsed as T, error: null };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown Supabase request error.";
@@ -133,18 +188,45 @@ const createAuthClient = (url: string, key: string) => {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
   };
+  const SESSION_STORAGE_KEY = "trivia_lingua_auth_session";
+  const listeners = new Set<(event: string, session: Session | null) => void>();
+
+  const readStoredSession = (): Session | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as Session;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredSession = (session: Session | null) => {
+    if (typeof window === "undefined") return;
+    if (!session) {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  };
+
+  const emit = (event: string, session: Session | null) => {
+    for (const listener of listeners) listener(event, session);
+  };
 
   return {
     async getSession(): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+      return { data: { session: readStoredSession() }, error: null };
     },
 
     onAuthStateChange(callback: (event: string, session: Session | null) => void) {
-      callback("INITIAL_SESSION", null);
+      listeners.add(callback);
+      callback("INITIAL_SESSION", readStoredSession());
       return {
         data: {
           subscription: {
-            unsubscribe: () => undefined,
+            unsubscribe: () => listeners.delete(callback),
           },
         },
       };
@@ -157,13 +239,36 @@ const createAuthClient = (url: string, key: string) => {
       provider: OAuthProvider;
       options?: OAuthOptions;
     }): Promise<SupabaseResponse<{ provider: OAuthProvider; url: string }>> {
-      const oauthUrl = new URL(`${url}/auth/v1/authorize`);
-      oauthUrl.searchParams.set("provider", provider);
+      const directOauthUrl = new URL(`${url}/auth/v1/authorize`);
+      directOauthUrl.searchParams.set("provider", provider);
       if (options?.redirectTo) {
-        oauthUrl.searchParams.set("redirect_to", options.redirectTo);
+        directOauthUrl.searchParams.set("redirect_to", options.redirectTo);
       }
 
-      const href = oauthUrl.toString();
+      // Ask Supabase for the provider redirect URL first so disabled providers
+      // return a handled error instead of hard-navigating to a JSON error page.
+      const preflightUrl = new URL(directOauthUrl.toString());
+      preflightUrl.searchParams.set("skip_http_redirect", "true");
+
+      let href = preflightUrl.toString();
+      try {
+        const response = await fetch(href, {
+          headers: authHeaders,
+        });
+        const payload = (await response.json().catch(() => ({}))) as { url?: string; msg?: string; message?: string };
+        if (!response.ok || !payload.url) {
+          return {
+            data: { provider, url: href },
+            error: toError(payload.msg || payload.message || `OAuth authorization failed. HTTP ${response.status}.`, response.status),
+          };
+        }
+        href = payload.url;
+      } catch {
+        // Some browsers/environments can fail this request (e.g. interception/CORS),
+        // so fall back to direct OAuth navigation instead of blocking sign-in.
+        href = directOauthUrl.toString();
+      }
+
       if (!options?.skipBrowserRedirect && typeof window !== "undefined") {
         window.location.assign(href);
       }
@@ -175,15 +280,61 @@ const createAuthClient = (url: string, key: string) => {
     },
 
     async signOut(): Promise<SupabaseResponse<null>> {
+      writeStoredSession(null);
+      emit("SIGNED_OUT", null);
       return { data: null, error: null };
     },
 
-    async setSession(_session: Session): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+    async setSession(session: Session): Promise<SupabaseResponse<{ session: Session | null }>> {
+      const userRes = await this.getUser(session.access_token);
+      const nextSession: Session = {
+        ...session,
+        user: userRes.data.user ?? undefined,
+      };
+      writeStoredSession(nextSession);
+      emit("SIGNED_IN", nextSession);
+      return { data: { session: nextSession }, error: null };
     },
 
-    async exchangeCodeForSession(_callbackUrl: string): Promise<SupabaseResponse<{ session: Session | null }>> {
-      return { data: { session: null }, error: null };
+    async exchangeCodeForSession(callbackUrl: string): Promise<SupabaseResponse<{ session: Session | null }>> {
+      try {
+        const parsed = new URL(callbackUrl);
+        const code = parsed.searchParams.get("code");
+        if (!code) return { data: { session: null }, error: toError("Missing auth code in callback URL.", 400) };
+        const response = await fetch(`${url}/auth/v1/token?grant_type=pkce`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ auth_code: code }),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          access_token?: string;
+          refresh_token?: string;
+          expires_at?: number;
+          user?: User;
+          message?: string;
+        };
+
+        if (!response.ok || !payload.access_token) {
+          return {
+            data: { session: null },
+            error: toError(payload.message || `Unable to exchange auth code. HTTP ${response.status}.`, response.status),
+          };
+        }
+
+        const session: Session = {
+          access_token: payload.access_token,
+          refresh_token: payload.refresh_token,
+          expires_at: payload.expires_at,
+          user: payload.user,
+        };
+        writeStoredSession(session);
+        emit("SIGNED_IN", session);
+        return { data: { session }, error: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown exchange session error.";
+        return { data: { session: null }, error: toError(message) };
+      }
     },
 
     async getUser(token?: string): Promise<SupabaseResponse<{ user: User | null }>> {
@@ -224,6 +375,10 @@ export const createClient = (url: string, key: string, _options?: unknown) => {
 
   return {
     from: <T = unknown>(table: string) => new QueryBuilder<T>(url, table, headers),
+    rpc: async <T = unknown>(_fn: string, _args?: Record<string, unknown>): Promise<SupabaseResponse<T>> => ({
+      data: null as T,
+      error: null,
+    }),
     auth: createAuthClient(url, key),
   };
 };

@@ -20,6 +20,7 @@ export default function LoginPage() {
   } = useAuth();
   const navigate = useNavigate();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [currentTopicIndex, setCurrentTopicIndex] = useState(0);
   const topics = ["Harry Potter", "Marvel", "Taylor Swift", "Star Wars", "Geography", "Music", "Film", "Sport", "Star Trek", "History", "Batman", "Food", "Culture", "Pokemon", "Animals"];
   useEffect(() => {
@@ -54,6 +55,15 @@ export default function LoginPage() {
       console.error('Failed to show install prompt:', error);
     }
   };
+  const handleStartPlaying = async () => {
+    setLoginError(null);
+    try {
+      await redirectToLogin();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to start OAuth login.";
+      setLoginError(message);
+    }
+  };
   if (isPending) {
     return <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
         <div className="animate-spin">
@@ -83,7 +93,7 @@ export default function LoginPage() {
               <span className="sm:hidden text-xl leading-none">☕</span>
               <span className="hidden sm:inline text-sm">☕ Support this project</span>
             </a>
-            <button onClick={redirectToLogin} className="px-3 md:px-6 py-2 md:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-sm md:text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap">Start playing</button>
+            <button onClick={handleStartPlaying} className="px-3 md:px-6 py-2 md:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-sm md:text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap">Start playing</button>
           </div>
         </div>
       </header>
@@ -109,13 +119,16 @@ export default function LoginPage() {
             </span>
           </h1>
 
-          <button onClick={redirectToLogin} className="group px-10 md:px-12 py-4 md:py-5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xl md:text-2xl font-bold rounded-2xl shadow-2xl hover:shadow-orange-500/50 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 relative overflow-hidden">
+          <button onClick={handleStartPlaying} className="group px-10 md:px-12 py-4 md:py-5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xl md:text-2xl font-bold rounded-2xl shadow-2xl hover:shadow-orange-500/50 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 relative overflow-hidden">
             <span className="relative z-10 flex items-center gap-2 justify-center">
               Start playing now
               <Sparkles className="w-6 h-6 group-hover:rotate-12 transition-transform" />
             </span>
             <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           </button>
+          {loginError ? (
+            <p className="mt-4 text-sm text-red-600 font-medium">{loginError}</p>
+          ) : null}
           
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 md:gap-6 text-xs md:text-sm text-gray-600">
             <span className="flex items-center gap-1.5">

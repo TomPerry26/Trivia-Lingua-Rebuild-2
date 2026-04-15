@@ -70,7 +70,8 @@ export default function QuizPage() {
   const navigate = useNavigate();
   
   // Extract quiz ID from either format: /quiz/:id or /es/quiz/:slugWithId
-  const quizId = params.id || (params.slugWithId ? String(extractIdFromSlug(params.slugWithId)) : null);
+  const extractedId = params.slugWithId ? extractIdFromSlug(params.slugWithId) : null;
+  const quizId = params.id ?? extractedId;
   const { user, isPending: authPending, redirectToLogin } = useAuth();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [hasQuizAccess, setHasQuizAccess] = useState(true);
@@ -107,7 +108,12 @@ export default function QuizPage() {
         }
 
         // Fetch the quiz
-        const quizResponse = await fetch(`/api/quizzes/${quizId}`);
+        if (!quizId) {
+          setLoading(false);
+          return;
+        }
+
+        const quizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
@@ -213,7 +219,7 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quizzes/${data.nextQuizId}`);
+              const nextQuizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);
