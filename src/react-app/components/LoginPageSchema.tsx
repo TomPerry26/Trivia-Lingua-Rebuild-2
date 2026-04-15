@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
 
 export default function LoginPageSchema() {
   useEffect(() => {
@@ -8,8 +9,8 @@ export default function LoginPageSchema() {
       "name": "Trivia Lingua",
       "applicationCategory": "EducationalApplication",
       "description": "Learn Spanish through fun daily trivia quizzes about topics you love. Practice reading comprehension with quizzes about Harry Potter, Marvel, music, geography, and more. Track your progress and build daily streaks.",
-      "url": "https://k3ssqlqvt37e2.mocha.app",
-      "image": "https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg",
+      "url": SITE_URL,
+      "image": OG_IMAGE_URL,
       "inLanguage": "en",
       "educationalUse": "Spanish language learning and reading practice",
       "offers": {

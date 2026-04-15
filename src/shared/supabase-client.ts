@@ -368,6 +368,7 @@ const createAuthClient = (url: string, key: string) => {
 };
 
 export const createClient = (url: string, key: string, _options?: unknown) => {
+  void _options;
   const headers = {
     apikey: key,
     Authorization: `Bearer ${key}`,
@@ -375,10 +376,33 @@ export const createClient = (url: string, key: string, _options?: unknown) => {
 
   return {
     from: <T = unknown>(table: string) => new QueryBuilder<T>(url, table, headers),
-    rpc: async <T = unknown>(_fn: string, _args?: Record<string, unknown>): Promise<SupabaseResponse<T>> => ({
-      data: null as T,
-      error: null,
-    }),
+    rpc: async <T = unknown>(fn: string, args?: Record<string, unknown>): Promise<SupabaseResponse<T>> => {
+      const endpoint = `${url}/rest/v1/rpc/${fn}`;
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify(args ?? {}),
+        });
+
+        const raw = await response.text();
+        const parsed = raw ? JSON.parse(raw) : null;
+
+        if (!response.ok) {
+          const message = parsed?.message || `Supabase RPC request failed with status ${response.status}.`;
+          return { data: null as T, error: toError(message, response.status) };
+        }
+
+        return { data: parsed as T, error: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown Supabase RPC error.";
+        return { data: null as T, error: toError(message) };
+      }
+    },
     auth: createAuthClient(url, key),
   };
 };

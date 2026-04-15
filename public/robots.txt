@@ -9,4 +9,4 @@ Disallow: /progress
 Disallow: /profile
 Disallow: /api/
 
-Sitemap: https://k3ssqlqvt37e2.mocha.app/sitemap.xml
+Sitemap: https://www.trivialingua.com/sitemap.xml

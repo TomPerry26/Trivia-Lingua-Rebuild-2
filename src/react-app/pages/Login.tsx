@@ -4,6 +4,7 @@ import { useNavigate, Link } from "react-router";
 import { Sparkles, BookOpen, TrendingUp, Smartphone } from "lucide-react";
 import MetaTags from "@/react-app/components/MetaTags";
 import LoginPageSchema from "@/react-app/components/LoginPageSchema";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
 
 // No animations needed - removed for stability
 interface BeforeInstallPromptEvent extends Event {
@@ -72,7 +73,7 @@ export default function LoginPage() {
       </div>;
   }
   return <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 flex flex-col">
-      <MetaTags title="Learn Spanish with Daily Trivia Quizzes | Trivia Lingua" description="Free Spanish reading practice through fun trivia quizzes about Harry Potter, Marvel, music, and more. Track progress, build streaks, and improve your Spanish naturally at every level." url="https://k3ssqlqvt37e2.mocha.app/login" image="https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg" />
+      <MetaTags title="Learn Spanish with Daily Trivia Quizzes | Trivia Lingua" description="Free Spanish reading practice through fun trivia quizzes about Harry Potter, Marvel, music, and more. Track progress, build streaks, and improve your Spanish naturally at every level." url={`${SITE_URL}/login`} image={OG_IMAGE_URL} />
       <LoginPageSchema />
       {/* Fixed Top Header */}
       <header className="bg-white/80 backdrop-blur-lg border-b border-orange-100 fixed top-0 left-0 right-0 z-50 h-16">

@@ -4,7 +4,7 @@ import { difficulties } from "../data/difficulties";
 
 export async function generateSitemap(c: Context) {
   try {
-    const host = c.req.header("host") || "k3ssqlqvt37e2.mocha.app";
+    const host = c.req.header("host") || "www.trivialingua.com";
     const baseUrl = "https://" + host;
     
     // Build XML sitemap
@@ -64,7 +64,7 @@ export async function generateSitemap(c: Context) {
 
 export async function generateBlogSitemap(c: Context) {
   try {
-    const host = c.req.header("host") || "k3ssqlqvt37e2.mocha.app";
+    const host = c.req.header("host") || "www.trivialingua.com";
     const baseUrl = "https://" + host;
     
     // Build XML sitemap
