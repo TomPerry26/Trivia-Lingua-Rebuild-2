@@ -19,8 +19,16 @@ const resolvedSupabaseAnonKey = supabaseAnonKey as string;
 
 export const supabaseAnon = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey);
 
-if (!supabaseServiceRoleKey) {
+const isVercelPreview = process.env.VERCEL_ENV === "preview";
+
+if (!supabaseServiceRoleKey && !isVercelPreview) {
   throw new Error("Missing required Supabase server environment variable: SUPABASE_SERVICE_ROLE_KEY.");
 }
 
-export const supabaseAdmin = createClient(resolvedSupabaseUrl, supabaseServiceRoleKey);
+if (!supabaseServiceRoleKey && isVercelPreview) {
+  console.warn("SUPABASE_SERVICE_ROLE_KEY is missing in preview. Falling back to SUPABASE_ANON_KEY.");
+}
+
+export const supabaseAdmin = supabaseServiceRoleKey
+  ? createClient(resolvedSupabaseUrl, supabaseServiceRoleKey)
+  : supabaseAnon;

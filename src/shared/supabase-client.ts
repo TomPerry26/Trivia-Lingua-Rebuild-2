@@ -189,7 +189,31 @@ const createAuthClient = (url: string, key: string) => {
     "Content-Type": "application/json",
   };
   const SESSION_STORAGE_KEY = "trivia_lingua_auth_session";
+  const PKCE_VERIFIER_STORAGE_KEY = "trivia_lingua_pkce_code_verifier";
   const listeners = new Set<(event: string, session: Session | null) => void>();
+
+  const randomString = (length = 64) => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes)
+      .map((value) => chars[value % chars.length])
+      .join("");
+  };
+
+  const base64UrlEncode = (input: ArrayBuffer) => {
+    const bytes = new Uint8Array(input);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const base64 = btoa(binary);
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  };
+
+  const createCodeChallenge = async (verifier: string) => {
+    const encoded = new TextEncoder().encode(verifier);
+    const digest = await crypto.subtle.digest("SHA-256", encoded);
+    return base64UrlEncode(digest);
+  };
 
   const readStoredSession = (): Session | null => {
     if (typeof window === "undefined") return null;
@@ -241,6 +265,14 @@ const createAuthClient = (url: string, key: string) => {
     }): Promise<SupabaseResponse<{ provider: OAuthProvider; url: string }>> {
       const directOauthUrl = new URL(`${url}/auth/v1/authorize`);
       directOauthUrl.searchParams.set("provider", provider);
+      const usePkce = typeof window !== "undefined";
+      let codeVerifier: string | null = null;
+      if (usePkce) {
+        codeVerifier = randomString(96);
+        const codeChallenge = await createCodeChallenge(codeVerifier);
+        directOauthUrl.searchParams.set("code_challenge", codeChallenge);
+        directOauthUrl.searchParams.set("code_challenge_method", "s256");
+      }
       if (options?.redirectTo) {
         directOauthUrl.searchParams.set("redirect_to", options.redirectTo);
       }
@@ -270,6 +302,9 @@ const createAuthClient = (url: string, key: string) => {
       }
 
       if (!options?.skipBrowserRedirect && typeof window !== "undefined") {
+        if (codeVerifier) {
+          window.localStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, codeVerifier);
+        }
         window.location.assign(href);
       }
 
@@ -301,10 +336,15 @@ const createAuthClient = (url: string, key: string) => {
         const parsed = new URL(callbackUrl);
         const code = parsed.searchParams.get("code");
         if (!code) return { data: { session: null }, error: toError("Missing auth code in callback URL.", 400) };
+        const codeVerifier =
+          typeof window !== "undefined" ? window.localStorage.getItem(PKCE_VERIFIER_STORAGE_KEY) : null;
         const response = await fetch(`${url}/auth/v1/token?grant_type=pkce`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ auth_code: code }),
+          body: JSON.stringify({
+            auth_code: code,
+            ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+          }),
         });
 
         const payload = (await response.json().catch(() => ({}))) as {
@@ -329,6 +369,9 @@ const createAuthClient = (url: string, key: string) => {
           user: payload.user,
         };
         writeStoredSession(session);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY);
+        }
         emit("SIGNED_IN", session);
         return { data: { session }, error: null };
       } catch (error) {
