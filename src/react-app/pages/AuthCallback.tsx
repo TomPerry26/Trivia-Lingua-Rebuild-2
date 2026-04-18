@@ -12,7 +12,6 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const callbackUrl = window.location.href;
         const searchParams = new URLSearchParams(window.location.search);
         const callbackError = searchParams.get("error");
         const callbackErrorDescription = searchParams.get("error_description");
@@ -40,7 +39,7 @@ export default function AuthCallbackPage() {
         const otpType = searchParams.get("type") as EmailOtpType | null;
 
         if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
             authTelemetry.error({
               stage: "callback",
@@ -56,6 +55,11 @@ export default function AuthCallbackPage() {
             outcome: "success",
           });
         } else if (tokenHash && otpType) {
+          authTelemetry.info({
+            stage: "callback",
+            event: "otp_verify_started",
+            outcome: "attempt",
+          });
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type: otpType,
@@ -76,33 +80,33 @@ export default function AuthCallbackPage() {
             outcome: "success",
           });
         } else {
-          const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
-
-          if (!accessToken || !refreshToken) {
-            throw new Error("Unsupported authentication callback payload.");
-          }
-
-          const { error: setSessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          if (setSessionError) {
-            authTelemetry.error({
-              stage: "callback",
-              event: "set_session_failed",
-              outcome: "failure",
-              details: { message: setSessionError.message },
-            });
-            throw setSessionError;
-          }
-          authTelemetry.info({
+          authTelemetry.error({
             stage: "callback",
-            event: "legacy_hash_session_succeeded",
-            outcome: "success",
+            event: "callback_payload_unsupported",
+            outcome: "failure",
+            details: { hasCode: Boolean(code), hasTokenHash: Boolean(tokenHash), hasOtpType: Boolean(otpType) },
           });
+          throw new Error("Unsupported authentication callback payload.");
+        }
+
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          authTelemetry.error({
+            stage: "session_ready",
+            event: "session_lookup_failed",
+            outcome: "failure",
+            details: { message: sessionError.message },
+          });
+          throw sessionError;
+        }
+
+        if (!sessionData.session?.user) {
+          authTelemetry.error({
+            stage: "session_ready",
+            event: "session_user_missing",
+            outcome: "failure",
+          });
+          throw new Error("Authentication completed but no user session was found.");
         }
 
         window.history.replaceState({}, document.title, "/auth/callback");
