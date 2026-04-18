@@ -2,6 +2,12 @@
 
 This document defines auth SLOs, stage-level observability, preview promotion gates, and incident triage/rollback procedures.
 
+## Auth invariants
+
+- **One callback route:** `/auth/callback`
+- **One auth flow:** Supabase SDK OAuth PKCE (`signInWithOAuth` then `exchangeCodeForSession`)
+- **One environment mapping rule:** Vercel Preview maps to **staging**; Vercel Production maps to **production**
+
 ## 1) Auth SLOs
 
 Track these indicators per 30-day window and alert on burn-rate violations:
@@ -9,10 +15,10 @@ Track these indicators per 30-day window and alert on burn-rate violations:
 - **Successful login completion rate** (target **>= 99.5%**)
   - Definition: `auth.callback.completed.success / auth.login.started.attempt`
   - Numerator event: callback reaches session-ready state.
-  - Denominator event: any login attempt started (Google OAuth or magic-link).
+  - Denominator event: OAuth login attempt started.
 - **Callback error rate** (target **<= 0.5%**)
   - Definition: `auth.callback.failed / auth.callback.received`
-  - Includes callback `error` query param failures, unsupported payloads, verify failures.
+  - Includes callback `error` query param failures, unsupported payloads, token exchange failures.
 - **Token exchange error rate** (target **<= 0.3%**)
   - Definition: `auth.token_exchange.failed / auth.token_exchange.attempt`
   - Covers `exchangeCodeForSession` failures on OAuth callback.
@@ -36,19 +42,20 @@ All auth stage logs should include JSON fields:
 ### Stage coverage
 
 - **start**
-  - login attempt start (Google, magic-link)
+  - OAuth login attempt start
   - session bootstrap start
 - **redirect**
   - OAuth redirect initiated
-  - magic-link send success/failure
+  - OAuth redirect failure
 - **callback**
   - callback received
   - callback error param
   - token exchange success/failure
-  - magic-link verify success/failure
+  - callback payload unsupported
 - **session_ready**
   - callback completed
   - auth state session ready/changed
+  - session lookup/user missing failures
 - **users_me**
   - client `/api/users/me` request start/completion
   - server `/api/users/me` handler start and response mode
@@ -59,8 +66,8 @@ The CI smoke script validates:
 
 1. **guest browsing** (`/`, `/quizzes`)
 2. **OAuth initiation endpoint** resolves on expected Supabase host (`/auth/v1/authorize`)
-3. **callback completion** succeeds via magic-link token hash verification (`verifyOtp`)
-4. **session establishment** succeeds after callback verification (`getSession` returns access token + user)
+3. **callback completion** succeeds via OAuth code exchange (`exchangeCodeForSession` path)
+4. **session establishment** succeeds after callback completion (`getSession` returns access token + user)
 5. **member quiz access** authenticated user can fetch configured member quiz
 6. **progress write/read** authenticated completion write + progress read succeed
 7. `/api/users/me` authenticated response includes identity fields (`id`, `email`)
@@ -68,9 +75,8 @@ The CI smoke script validates:
 Required secrets per environment:
 
 - `*_SMOKE_BEARER_TOKEN`
-- `*_SMOKE_MAGIC_LINK_EMAIL`
 - `*_SMOKE_MEMBER_QUIZ_ID`
-- `*_SUPABASE_SERVICE_ROLE_KEY` (used to generate callback verification links in CI)
+- `*_SUPABASE_SERVICE_ROLE_KEY`
 
 (`*` = `STAGING` or `PRODUCTION` in workflow secrets.)
 
@@ -124,7 +130,23 @@ If incident is caused by recent auth changes:
 4. Re-run smoke suite against rollback deployment.
 5. Keep incident open until SLO error budgets stabilize for 30 minutes.
 
-## 5) Required fresh deploy + cache/session hygiene for auth changes
+## 5) Troubleshooting: first telemetry events to inspect
+
+When triaging an auth failure, inspect these events in this exact order first:
+
+1. `google_sign_in_started`
+2. `google_redirect_initiated`
+3. `callback_received`
+4. `token_exchange_failed` (if present) or `token_exchange_succeeded`
+5. `callback_error_param` and `callback_payload_unsupported` (if present)
+6. `session_lookup_failed` and `session_user_missing` (if present)
+7. `callback_completed`
+8. `users_me_request_started`
+9. `users_me_request_completed`
+
+If the sequence breaks, investigate the first missing or failing event before moving deeper.
+
+## 6) Required fresh deploy + cache/session hygiene for auth changes
 
 For every auth-related change (login, redirect, callback, token/session bootstrap, `/users/me` behavior):
 
@@ -135,14 +157,14 @@ For every auth-related change (login, redirect, callback, token/session bootstra
 5. Promote to production with a fresh production deploy.
 6. Re-run smoke checks in production post-deploy.
 
-## 6) Periodic provider parity audit (staging + production)
+## 7) Periodic provider parity audit (staging + production)
 
 In addition to release-time checks, run a scheduled parity audit to catch drift between Supabase projects and Vercel scopes.
 
 - Weekly quick pass and before every auth-related release.
 - Use `docs/supabase-auth-provider-audit.md` as the source checklist.
 
-## 7) Failure visibility and response ownership
+## 8) Failure visibility and response ownership
 
 ### Where to view failures
 
