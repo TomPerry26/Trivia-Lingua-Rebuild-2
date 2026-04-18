@@ -35,6 +35,27 @@ const getAuthToken = (req: Request): string | null => {
   return null;
 };
 
+const authLog = ({
+  event,
+  outcome,
+  details,
+}: {
+  event: string;
+  outcome: "attempt" | "success" | "failure";
+  details?: Record<string, unknown>;
+}) => {
+  console.info(
+    JSON.stringify({
+      scope: "auth",
+      stage: "users_me",
+      event,
+      outcome,
+      ts: new Date().toISOString(),
+      ...(details ? { details } : {}),
+    }),
+  );
+};
+
 type QuizBase = {
   id: number;
   title: string;
@@ -207,7 +228,7 @@ export default async function handler(req: Request): Promise<Response> {
     const enrichedLatest = await enrichQuizzes((latestRes.data ?? []) as QuizBase[]);
 
     const homeRowQuizResults = await Promise.all(
-      rows.map((row) => {
+      rows.map((_row) => {
         return supabaseAdmin
           .from("quizzes")
           .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
@@ -675,9 +696,18 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (path === "users/me") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    authLog({
+      event: "users_me_handler_started",
+      outcome: "attempt",
+    });
 
     const token = getAuthToken(req);
     if (!token) {
+      authLog({
+        event: "users_me_guest_response",
+        outcome: "success",
+        details: { hasToken: false },
+      });
       return jsonOk({
         access_level: null,
         identity: null,
@@ -687,6 +717,11 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data } = await supabaseAnon.auth.getUser(token);
     if (!data.user) {
+      authLog({
+        event: "users_me_invalid_token",
+        outcome: "failure",
+        details: { hasToken: true },
+      });
       return jsonOk({
         access_level: null,
         identity: null,
@@ -695,6 +730,14 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const entitlement = await getUserEntitlement(data.user.id);
+    authLog({
+      event: "users_me_authenticated_response",
+      outcome: "success",
+      details: {
+        hasToken: true,
+        userId: data.user.id,
+      },
+    });
 
     return jsonOk({
       id: data.user.id,

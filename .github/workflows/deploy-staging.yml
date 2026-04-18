@@ -44,12 +44,14 @@ jobs:
           echo "deployment_url=${deployment_url}" >> "$GITHUB_OUTPUT"
           echo "Staging deployment URL: ${deployment_url}"
 
-      - name: Smoke tests (staging)
+      - name: Preview auth smoke suite (staging)
         env:
           APP_BASE_URL: ${{ steps.deploy.outputs.deployment_url }}
           EXPECTED_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
           SMOKE_BEARER_TOKEN: ${{ secrets.STAGING_SMOKE_BEARER_TOKEN }}
+          SMOKE_MAGIC_LINK_EMAIL: ${{ secrets.STAGING_SMOKE_MAGIC_LINK_EMAIL }}
+          SMOKE_MEMBER_QUIZ_ID: ${{ secrets.STAGING_SMOKE_MEMBER_QUIZ_ID }}
           OAUTH_PROVIDER: ${{ vars.OAUTH_PROVIDER || 'google' }}
         run: ./.github/scripts/smoke-test.sh
 

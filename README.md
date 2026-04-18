@@ -6,6 +6,8 @@ Trivia Lingua is a Vite + React app deployed on Vercel with Supabase for auth/da
 
 Entitlements are modeled separately from auth identity so future paywall logic can evolve without changing login/session handling. See `docs/entitlements.md` for the data model, current no-op defaults, and billing webhook integration plan.
 
+For auth reliability controls (SLOs, stage logs, preview smoke gate, and incident runbook), see `docs/auth-operations.md`.
+
 ## Local development
 
 1. Install dependencies:
@@ -87,9 +89,12 @@ vercel --prod
 When auth flow logic changes (sign-in, callback handling, token/session bootstrap, or provider redirects), include this release procedure:
 
 1. Bump `CACHE_VERSION` in `public/sw.js` so existing clients evict legacy cached assets on next service worker activation.
-2. Redeploy the target environment(s) (at minimum staging/Preview, plus Production when shipping).
+2. Redeploy staging/Preview with a fresh build and run the preview auth smoke suite (`.github/scripts/smoke-test.sh`).
 3. In browser QA for the staging domain, clear site data and unregister the service worker before testing.
 4. Re-test sign-in in a fresh incognito/private window to eliminate legacy cache/session influence.
+5. Promote and redeploy production with a fresh build, then re-run smoke checks.
+
+The detailed required auth change procedure and rollback/triage runbook are in `docs/auth-operations.md`.
 
 ## Supabase Auth parity checklist (staging + production)
 
