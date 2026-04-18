@@ -121,6 +121,13 @@ export const assertSupabaseKeyMatchesUrlHost = ({
   supabaseKey,
   supabaseKeyVarName,
 }: SupabaseKeyAlignmentOptions) => {
+  // Supabase now supports both JWT-style keys (legacy anon/service_role) and opaque keys
+  // (for example "sb_publishable_*" / "sb_secret_*"). Host issuer checks are only possible
+  // for JWT-style keys, so non-JWT keys are treated as valid opaque credentials here.
+  if (!supabaseKey.includes(".")) {
+    return;
+  }
+
   const urlHost = parseSupabaseUrlHost({
     supabaseUrl,
     sourceName: supabaseUrlVarName,

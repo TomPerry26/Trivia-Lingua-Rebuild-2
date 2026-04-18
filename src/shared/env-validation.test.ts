@@ -135,3 +135,15 @@ test("assertSupabaseKeyMatchesUrlHost fails when key issuer host mismatches URL 
     /Supabase key mismatch between SUPABASE_ANON_KEY and SUPABASE_URL/,
   );
 });
+
+test("assertSupabaseKeyMatchesUrlHost allows opaque non-JWT Supabase keys", () => {
+  assert.doesNotThrow(() =>
+    assertSupabaseKeyMatchesUrlHost({
+      context: "client",
+      supabaseUrl: "https://abc.supabase.co",
+      supabaseUrlVarName: "VITE_SUPABASE_URL",
+      supabaseKey: "sb_publishable_1234567890",
+      supabaseKeyVarName: "VITE_SUPABASE_ANON_KEY",
+    }),
+  );
+});
