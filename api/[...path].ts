@@ -2,6 +2,7 @@ import { listAdminFeedback, listAdminMessages, listBlogPosts, listTopics } from 
 import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
+import { canFetchQuiz, getAccessRequired, getQuizVisibilityTier } from "../src/shared/quiz-access.js";
 
 export const config = {
   runtime: "edge",
@@ -42,6 +43,10 @@ type QuizBase = {
   min_access_level?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type AuthContext = {
+  isAuthenticated: boolean;
 };
 
 const enrichQuizzes = async (quizzes: QuizBase[]) => {
@@ -103,6 +108,15 @@ const enrichQuizzes = async (quizzes: QuizBase[]) => {
   }));
 };
 
+const withAccessContract = (quiz: QuizBase, auth: AuthContext) => {
+  const visibilityTier = getQuizVisibilityTier(quiz);
+  return {
+    ...quiz,
+    visibility_tier: visibilityTier,
+    access_required: getAccessRequired(quiz, auth.isAuthenticated),
+  };
+};
+
 const fallbackDifficultyContent = (slug: string) => {
   const difficulty = getDifficultyBySlug(slug);
   if (!difficulty) return null;
@@ -125,6 +139,18 @@ const fallbackDifficultyContent = (slug: string) => {
 export default async function handler(req: Request): Promise<Response> {
   try {
     const path = getPath(req);
+    let authContextPromise: Promise<AuthContext> | null = null;
+    const getAuthContext = async (): Promise<AuthContext> => {
+      if (!authContextPromise) {
+        authContextPromise = (async () => {
+          const token = getAuthToken(req);
+          if (!token) return { isAuthenticated: false };
+          const userRes = await supabaseAnon.auth.getUser(token);
+          return { isAuthenticated: Boolean(userRes.data.user) };
+        })();
+      }
+      return authContextPromise;
+    };
 
   if (path === "topics") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
@@ -147,6 +173,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "home-data") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
     const HOME_ROW_QUIZ_LIMIT = 12;
+    const auth = await getAuthContext();
 
     const [latestRes, rowsRes] = await Promise.all([
       supabaseAdmin
@@ -192,13 +219,17 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     return jsonOk({
-      latestQuizzes: enrichedLatest,
-      homeRows: rows.map((row, index) => ({ row, quizzes: enrichedRows[index] ?? [] })),
+      latestQuizzes: enrichedLatest.map((quiz) => withAccessContract(quiz, auth)),
+      homeRows: rows.map((row, index) => ({
+        row,
+        quizzes: (enrichedRows[index] ?? []).map((quiz) => withAccessContract(quiz, auth)),
+      })),
     });
   }
 
   if (path === "quizzes/paginated" || path === "quizzes/paginated/" || path === "quizzes") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const auth = await getAuthContext();
 
     const url = new URL(req.url, "http://localhost");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "24") || 24, 1), 100);
@@ -271,7 +302,7 @@ export default async function handler(req: Request): Promise<Response> {
       const paginated = await enrichQuizzes(paginatedBase);
 
       return jsonOk({
-        quizzes: paginated,
+        quizzes: paginated.map((quiz) => withAccessContract(quiz, auth)),
         total: sortedBase.length,
         limit,
         offset,
@@ -289,7 +320,7 @@ export default async function handler(req: Request): Promise<Response> {
     const paginated = await enrichQuizzes(paginatedBase);
 
     return jsonOk({
-      quizzes: paginated,
+      quizzes: paginated.map((quiz) => withAccessContract(quiz, auth)),
       total: sortedBase.length,
       limit,
       offset,
@@ -301,6 +332,7 @@ export default async function handler(req: Request): Promise<Response> {
   const quizByIdMatch = path.match(/^quizzes\/([^/]+)$/);
   if (quizByIdMatch || quizIdFromQuery) {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const auth = await getAuthContext();
 
     const quizId = decodeURIComponent(quizIdFromQuery ?? quizByIdMatch?.[1] ?? "");
     if (!quizId) return jsonError("quiz_id is required", 400);
@@ -324,10 +356,20 @@ export default async function handler(req: Request): Promise<Response> {
     if (!quizRes.data) return jsonError("Quiz not found", 404);
     if (questionsRes.error) return jsonError("Failed to fetch quiz questions", 500, questionsRes.error);
     const [enrichedQuiz] = await enrichQuizzes([quizRes.data as QuizBase]);
+    const quizWithAccess = withAccessContract(enrichedQuiz, auth);
+
+    if (!canFetchQuiz(enrichedQuiz, auth.isAuthenticated)) {
+      return jsonOk({
+        ...quizWithAccess,
+        is_locked: true,
+        topic: quizWithAccess.topic ?? (Array.isArray(quizWithAccess.topics) ? quizWithAccess.topics[0] : ""),
+        questions: [],
+      });
+    }
 
     return jsonOk({
-      ...enrichedQuiz,
-      topic: enrichedQuiz.topic ?? (Array.isArray(enrichedQuiz.topics) ? enrichedQuiz.topics[0] : ""),
+      ...quizWithAccess,
+      topic: quizWithAccess.topic ?? (Array.isArray(quizWithAccess.topics) ? quizWithAccess.topics[0] : ""),
       questions: questionsRes.data ?? [],
     });
   }
@@ -458,6 +500,14 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!body?.guest_session_id || typeof body.score !== "number" || typeof body.words_read !== "number") {
       return jsonError("guest_session_id, score, and words_read are required", 400);
+    }
+
+    const quizRes = await supabaseAdmin.from("quizzes").select("id, min_access_level").eq("id", quizId).maybeSingle();
+    if (quizRes.error || !quizRes.data) return jsonError("Quiz not found", 404, quizRes.error);
+    if (!canFetchQuiz(quizRes.data, false)) {
+      return jsonError("Sign up required for this quiz", 403, {
+        access_required: getAccessRequired(quizRes.data, false),
+      });
     }
 
     const insertRes = await supabaseAdmin.from("guest_quiz_attempts").insert({

@@ -8,6 +8,9 @@ export interface Quiz {
   title: string;
   difficulty: string;
   status?: string;
+  min_access_level?: string | null;
+  visibility_tier?: string | null;
+  access_required?: string | null;
   quiz_id?: string;
   topics?: string[];
   total_word_count?: number;

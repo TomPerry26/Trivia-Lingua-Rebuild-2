@@ -42,14 +42,15 @@ const SCROLL_POSITION_KEY = "quizzes-scroll-position";
 export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQuizCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const { user, redirectToLogin } = useAuth();
 
   // Determine user's access level
   const effectiveAccessLevel = userAccessLevel || (user ? 'member' : 'guest');
   
   // Check if quiz has min_access_level and if user has access
-  const quizAccessLevel = (quiz as any).min_access_level as AccessLevel | undefined;
-  const isLocked = quizAccessLevel ? !hasAccess(effectiveAccessLevel, quizAccessLevel) : false;
+  const quizAccessLevel = ((quiz as any).visibility_tier ?? (quiz as any).min_access_level) as AccessLevel | undefined;
+  const requiredAccess = (quiz as any).access_required as AccessLevel | null | undefined;
+  const isLocked = Boolean(requiredAccess) || (quizAccessLevel ? !hasAccess(effectiveAccessLevel, quizAccessLevel) : false);
   const parsedWordCount = Number((quiz as any).total_word_count);
   const exactWordCount = Number.isFinite(parsedWordCount) ? parsedWordCount : null;
 
@@ -89,8 +90,34 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
     );
   }
 
+  if (isLocked) {
+    return (
+      <div
+        className={`group bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg p-4 border border-orange-100 ${className || ""}`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className={`w-2 h-2 rounded-full ${dotColors[quiz.difficulty as keyof typeof dotColors]}`}></div>
+              <span className="text-xs font-semibold text-gray-500">{quiz.difficulty}</span>
+            </div>
+            <h4 className="text-base font-bold text-gray-800 mb-1.5 truncate">{quiz.title}</h4>
+            <p className="text-xs text-amber-700 font-semibold mb-2">Member-only quiz</p>
+            <button
+              onClick={redirectToLogin}
+              className="text-xs font-semibold text-orange-600 hover:text-orange-700 underline underline-offset-2"
+            >
+              Sign up to unlock
+            </button>
+          </div>
+          <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Link 
+    <Link
       to={`/quiz/${quiz.id}`}
       onClick={handleClick}
       className={`block group bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg hover:shadow-xl p-4 border border-orange-100 transition-all duration-200 hover:scale-105 ${className || ""}`}
@@ -111,9 +138,7 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
             <span>≈ {exactWordCount !== null ? exactWordCount.toLocaleString() : "500-1000"} words</span>
           </div>
         </div>
-        {isLocked ? (
-          <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
-        ) : quiz.is_completed ? (
+        {quiz.is_completed ? (
           <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
         ) : (
           <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 transition-colors flex-shrink-0" />
