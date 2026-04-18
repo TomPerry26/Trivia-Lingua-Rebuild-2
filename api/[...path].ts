@@ -1,6 +1,7 @@
 import { listAdminFeedback, listAdminMessages, listBlogPosts, listTopics } from "../src/server/queries.js";
 import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
 import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
+import { getUserEntitlement, requireEntitlement } from "../src/server/entitlements.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
 import { canFetchQuiz, getAccessRequired, getQuizVisibilityTier } from "../src/shared/quiz-access.js";
 
@@ -46,7 +47,11 @@ type QuizBase = {
 };
 
 type AuthContext = {
-  isAuthenticated: boolean;
+  identity: {
+    isAuthenticated: boolean;
+    userId: string | null;
+  };
+  entitlement: Awaited<ReturnType<typeof getUserEntitlement>>;
 };
 
 const enrichQuizzes = async (quizzes: QuizBase[]) => {
@@ -113,7 +118,7 @@ const withAccessContract = (quiz: QuizBase, auth: AuthContext) => {
   return {
     ...quiz,
     visibility_tier: visibilityTier,
-    access_required: getAccessRequired(quiz, auth.isAuthenticated),
+    access_required: getAccessRequired(quiz, auth.identity.isAuthenticated),
   };
 };
 
@@ -144,9 +149,19 @@ export default async function handler(req: Request): Promise<Response> {
       if (!authContextPromise) {
         authContextPromise = (async () => {
           const token = getAuthToken(req);
-          if (!token) return { isAuthenticated: false };
+          if (!token) {
+            return {
+              identity: { isAuthenticated: false, userId: null },
+              entitlement: await getUserEntitlement(null),
+            };
+          }
           const userRes = await supabaseAnon.auth.getUser(token);
-          return { isAuthenticated: Boolean(userRes.data.user) };
+          const user = userRes.data.user;
+          const userId = user?.id ?? null;
+          return {
+            identity: { isAuthenticated: Boolean(user), userId },
+            entitlement: await getUserEntitlement(userId),
+          };
         })();
       }
       return authContextPromise;
@@ -358,7 +373,7 @@ export default async function handler(req: Request): Promise<Response> {
     const [enrichedQuiz] = await enrichQuizzes([quizRes.data as QuizBase]);
     const quizWithAccess = withAccessContract(enrichedQuiz, auth);
 
-    if (!canFetchQuiz(enrichedQuiz, auth.isAuthenticated)) {
+    if (!canFetchQuiz(enrichedQuiz, auth.identity.isAuthenticated)) {
       return jsonOk({
         ...quizWithAccess,
         is_locked: true,
@@ -391,6 +406,8 @@ export default async function handler(req: Request): Promise<Response> {
     const userRes = await supabaseAnon.auth.getUser(token);
     const user = userRes.data.user;
     if (!user) return jsonError("Authentication required", 401, userRes.error);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -660,15 +677,34 @@ export default async function handler(req: Request): Promise<Response> {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
 
     const token = getAuthToken(req);
-    if (!token) return jsonOk({ access_level: null });
+    if (!token) {
+      return jsonOk({
+        access_level: null,
+        identity: null,
+        entitlement: await getUserEntitlement(null),
+      });
+    }
 
     const { data } = await supabaseAnon.auth.getUser(token);
-    if (!data.user) return jsonOk({ access_level: null });
+    if (!data.user) {
+      return jsonOk({
+        access_level: null,
+        identity: null,
+        entitlement: await getUserEntitlement(null),
+      });
+    }
+
+    const entitlement = await getUserEntitlement(data.user.id);
 
     return jsonOk({
       id: data.user.id,
       email: data.user.email,
       access_level: data.user.user_metadata?.access_level ?? null,
+      identity: {
+        id: data.user.id,
+        email: data.user.email ?? null,
+      },
+      entitlement,
     });
   }
 
@@ -766,6 +802,8 @@ export default async function handler(req: Request): Promise<Response> {
     const userRes = await supabaseAnon.auth.getUser(token);
     const user = userRes.data.user;
     if (!user) return jsonError("Authentication required", 401, userRes.error);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
 
     const body = (await req.json().catch(() => null)) as { daily_target?: number } | null;
     if (typeof body?.daily_target !== "number") return jsonError("daily_target is required", 400);
