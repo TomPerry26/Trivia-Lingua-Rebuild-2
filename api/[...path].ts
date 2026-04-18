@@ -82,6 +82,18 @@ const getAuthenticatedUser = async (req: Request) => {
   return { token, user: userRes.data.user ?? null, userError: userRes.error };
 };
 
+const ADMIN_ACCESS_LEVEL = "beta";
+
+const isAdminUser = (user: { user_metadata?: Record<string, unknown> | null } | null) =>
+  user?.user_metadata?.access_level === ADMIN_ACCESS_LEVEL;
+
+const requireAdminAuth = async (req: Request): Promise<Response | null> => {
+  const { user, userError } = await getAuthenticatedUser(req);
+  if (!user) return jsonError("Authentication required", 401, userError);
+  if (!isAdminUser(user)) return jsonError("Admin access required", 403);
+  return null;
+};
+
 const enrichQuizzes = async (quizzes: QuizBase[]) => {
   if (quizzes.length === 0) return [] as Array<QuizBase & { topics: string[]; total_word_count: number; completions: number }>;
 
@@ -172,6 +184,11 @@ const fallbackDifficultyContent = (slug: string) => {
 export default async function handler(req: Request): Promise<Response> {
   try {
     const path = getPath(req);
+    if (path.startsWith("admin/")) {
+      const adminAuthError = await requireAdminAuth(req);
+      if (adminAuthError) return adminAuthError;
+    }
+
     let authContextPromise: Promise<AuthContext> | null = null;
     const getAuthContext = async (): Promise<AuthContext> => {
       if (!authContextPromise) {

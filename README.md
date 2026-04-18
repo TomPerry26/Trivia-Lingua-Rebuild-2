@@ -26,7 +26,6 @@ Required client variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_SUPABASE_OAUTH_PROVIDER` (must be enabled in Supabase Auth; current flow assumes `google`)
 - `VITE_PUBLIC_SITE_URL` (for canonical/meta URLs, e.g. `https://www.trivialingua.com`)
 - `VITE_OG_IMAGE_URL` (optional override for social preview image)
 
@@ -49,7 +48,7 @@ npm run dev
 - Set the Vercel **Build Command** to `npm run build` (or leave it empty so Vercel uses the package script default).
 - Keep `SUPABASE_SERVICE_ROLE_KEY` **server-only** (Vercel function environment variables only).
 - Never prefix the service role key with `VITE_`, or it will be exposed to browser bundles.
-- Startup/build fails fast if a deployment tier points at the wrong Supabase host.
+- Startup/build fails fast for missing required Supabase vars, invalid Supabase URLs, and `DEPLOYMENT_TIER` vs `VERCEL_ENV` mismatches.
 
 ### Final minimal environment matrix
 
@@ -59,15 +58,10 @@ Do **not** set Supabase credentials as global/shared values. Scope them in Verce
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | staging project URL | production project URL |
 | `VITE_SUPABASE_ANON_KEY` | staging anon key | production anon key |
-| `VITE_SUPABASE_PREVIEW_HOST` | staging host (for example `abc123.supabase.co`) | _unset_ |
-| `VITE_SUPABASE_PRODUCTION_HOST` | _unset_ | production host (for example `xyz789.supabase.co`) |
-| `VITE_SUPABASE_OAUTH_PROVIDER` | `google` | `google` |
 | `VITE_PUBLIC_SITE_URL` | staging public URL | production public URL |
 | `VITE_OG_IMAGE_URL` | optional | optional |
 | `SUPABASE_URL` | staging project URL | production project URL |
 | `SUPABASE_ANON_KEY` | staging anon key | production anon key |
-| `SUPABASE_PREVIEW_HOST` | staging host | _unset_ |
-| `SUPABASE_PRODUCTION_HOST` | _unset_ | production host |
 | `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key (if preview server functions need it) | production service-role key |
 
 > Tier resolution rule: rely on Vercel environment context (`VERCEL_ENV`) and keep the mapping **Preview → staging** and **Production → production**.
@@ -103,7 +97,6 @@ In **both** Supabase projects (staging and production), keep auth provider setti
    - `https://<staging-domain>/auth/callback`
    - `https://<production-domain>/auth/callback`
    - any active preview/alias QA domains that sign in users
-3. Ensure `VITE_SUPABASE_OAUTH_PROVIDER` in each deployment scope matches a provider that is enabled in that Supabase project.
 
 This app uses path-based callback routing at `/auth/callback`.
 

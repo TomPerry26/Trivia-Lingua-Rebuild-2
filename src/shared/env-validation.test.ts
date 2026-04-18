@@ -15,10 +15,6 @@ const baseOptions = {
   deploymentTierSourceName: "DEPLOYMENT_TIER",
   vercelEnv: "preview",
   vercelEnvSourceName: "VERCEL_ENV",
-  stagingHost: "preview-project.supabase.co",
-  stagingHostVarName: "SUPABASE_PREVIEW_HOST",
-  productionHost: "prod-project.supabase.co",
-  productionHostVarName: "SUPABASE_PRODUCTION_HOST",
 };
 
 test("parseDeploymentTier normalizes aliases", () => {
@@ -44,24 +40,25 @@ test("validateSupabaseEnvironment fails with uniform missing variable error", ()
   );
 });
 
-test("validateSupabaseEnvironment requires the tier-specific host variable", () => {
+test("validateSupabaseEnvironment catches invalid Supabase URL", () => {
   assert.throws(
     () =>
       validateSupabaseEnvironment({
         ...baseOptions,
-        stagingHost: "",
+        supabaseUrl: "not-a-valid-url",
       }),
-    /Missing required tier variable for staging deployments: SUPABASE_PREVIEW_HOST\./,
+    /Invalid Supabase URL in SUPABASE_URL/,
   );
 });
 
-test("validateSupabaseEnvironment catches mismatched tier host", () => {
+test("validateSupabaseEnvironment catches deployment tier mismatch", () => {
   assert.throws(
     () =>
       validateSupabaseEnvironment({
         ...baseOptions,
-        supabaseUrl: "https://wrong-host.supabase.co",
+        deploymentTier: "production",
+        vercelEnv: "preview",
       }),
-    /Supabase host mismatch for staging tier/,
+    /Tier mismatch/,
   );
 });

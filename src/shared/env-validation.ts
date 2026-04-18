@@ -13,10 +13,6 @@ type SupabaseEnvValidationOptions = {
   deploymentTierSourceName?: string;
   vercelEnv?: string | undefined;
   vercelEnvSourceName?: string;
-  stagingHost?: string | undefined;
-  stagingHostVarName: string;
-  productionHost?: string | undefined;
-  productionHostVarName: string;
 };
 
 const normalizeValue = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
@@ -40,25 +36,6 @@ export const parseDeploymentTier = (rawTier: string | undefined): DeploymentTier
   return null;
 };
 
-const parseSupabaseUrlHost = ({
-  supabaseUrl,
-  sourceName,
-  context,
-}: {
-  supabaseUrl: string;
-  sourceName: string;
-  context: RuntimeContext;
-}) => {
-  try {
-    return new URL(supabaseUrl).host.toLowerCase();
-  } catch {
-    throw formatEnvError(context, [
-      `Invalid Supabase URL in ${sourceName}: "${supabaseUrl}".`,
-      'Expected a full URL like "https://<project>.supabase.co".',
-    ]);
-  }
-};
-
 export const validateSupabaseEnvironment = ({
   context,
   requiredVars,
@@ -68,10 +45,6 @@ export const validateSupabaseEnvironment = ({
   deploymentTierSourceName = "DEPLOYMENT_TIER",
   vercelEnv,
   vercelEnvSourceName = "VERCEL_ENV",
-  stagingHost,
-  stagingHostVarName,
-  productionHost,
-  productionHostVarName,
 }: SupabaseEnvValidationOptions) => {
   const missingRequiredVars = requiredVars.filter(([, value]) => !value).map(([name]) => name);
 
@@ -80,6 +53,14 @@ export const validateSupabaseEnvironment = ({
   }
 
   const resolvedSupabaseUrl = supabaseUrl as string;
+  try {
+    new URL(resolvedSupabaseUrl);
+  } catch {
+    throw formatEnvError(context, [
+      `Invalid Supabase URL in ${supabaseUrlVarName}: "${resolvedSupabaseUrl}".`,
+      'Expected a full URL like "https://<project>.supabase.co".',
+    ]);
+  }
 
   if (deploymentTier && vercelEnv) {
     const resolvedDeploymentTier = parseDeploymentTier(deploymentTier);
@@ -93,34 +74,5 @@ export const validateSupabaseEnvironment = ({
     }
   }
 
-  const tierRaw = deploymentTier ?? vercelEnv;
-  const tierSourceName = deploymentTier ? deploymentTierSourceName : vercelEnvSourceName;
-  const resolvedTier = parseDeploymentTier(tierRaw);
-
-  if (!resolvedTier) {
-    return;
-  }
-
-  const expectedHost =
-    resolvedTier === "staging" ? normalizeValue(stagingHost) : normalizeValue(productionHost);
-
-  if (!expectedHost) {
-    const missingHostVarName = resolvedTier === "staging" ? stagingHostVarName : productionHostVarName;
-    throw formatEnvError(context, [
-      `Missing required tier variable for ${resolvedTier} deployments: ${missingHostVarName}.`,
-    ]);
-  }
-
-  const actualHost = parseSupabaseUrlHost({
-    supabaseUrl: resolvedSupabaseUrl,
-    sourceName: supabaseUrlVarName,
-    context,
-  });
-
-  if (actualHost !== expectedHost) {
-    throw formatEnvError(context, [
-      `Supabase host mismatch for ${resolvedTier} tier from ${tierSourceName}="${tierRaw}".`,
-      `Expected host "${expectedHost}" but received "${actualHost}" from ${supabaseUrlVarName}.`,
-    ]);
-  }
+  return;
 };

@@ -17,10 +17,6 @@ validateSupabaseEnvironment({
   deploymentTierSourceName: "DEPLOYMENT_TIER",
   vercelEnv: process.env.VERCEL_ENV,
   vercelEnvSourceName: "VERCEL_ENV",
-  stagingHost: process.env.SUPABASE_PREVIEW_HOST,
-  stagingHostVarName: "SUPABASE_PREVIEW_HOST",
-  productionHost: process.env.SUPABASE_PRODUCTION_HOST,
-  productionHostVarName: "SUPABASE_PRODUCTION_HOST",
 });
 
 const resolvedSupabaseUrl = supabaseUrl as string;
