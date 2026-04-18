@@ -1,14 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session, User } from "../../shared/supabase-client";
+import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
 
-type SignInProvider = string;
-const DEFAULT_OAUTH_PROVIDER = import.meta.env.VITE_SUPABASE_OAUTH_PROVIDER || "google";
+type SignInProvider = "google";
 
 interface AuthContextValue {
   user: User | null;
   isPending: boolean;
-  signIn: (provider?: SignInProvider) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithMagicLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   redirectToLogin: () => Promise<void>;
 }
@@ -26,16 +26,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!isMounted) return;
-        setUser(data.session?.user ?? null);
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setIsPending(false);
-      });
+    const bootstrapSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      setUser(data.session?.user ?? null);
+      setIsPending(false);
+    };
+
+    void bootstrapSession();
 
     const {
       data: { subscription },
@@ -51,11 +49,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (provider: SignInProvider = DEFAULT_OAUTH_PROVIDER) => {
+  const signInWithGoogle = useCallback(async () => {
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: "google" as SignInProvider,
       options: {
         redirectTo: getCallbackUrl(),
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  }, []);
+
+  const signInWithMagicLink = useCallback(async (email: string) => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      throw new Error("Email is required.");
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: getCallbackUrl(),
       },
     });
 
@@ -72,12 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback(async () => {
-    await signIn(DEFAULT_OAUTH_PROVIDER);
-  }, [signIn]);
+    await signInWithGoogle();
+  }, [signInWithGoogle]);
 
   const value = useMemo(
-    () => ({ user, isPending, signIn, signOut, redirectToLogin }),
-    [user, isPending, signIn, signOut, redirectToLogin],
+    () => ({ user, isPending, signInWithGoogle, signInWithMagicLink, signOut, redirectToLogin }),
+    [user, isPending, signInWithGoogle, signInWithMagicLink, signOut, redirectToLogin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

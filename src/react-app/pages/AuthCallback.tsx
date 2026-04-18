@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
 
 export default function AuthCallbackPage() {
@@ -14,36 +15,49 @@ export default function AuthCallbackPage() {
         const searchParams = new URLSearchParams(window.location.search);
         const callbackError = searchParams.get("error");
         const callbackErrorDescription = searchParams.get("error_description");
+
         if (callbackError) {
           throw new Error(callbackErrorDescription || callbackError);
         }
 
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-        const hasTokenHash = hashParams.has("access_token") && hashParams.has("refresh_token");
+        const code = searchParams.get("code");
+        const tokenHash = searchParams.get("token_hash");
+        const otpType = searchParams.get("type") as EmailOtpType | null;
 
-        if (hasTokenHash) {
-          const access_token = hashParams.get("access_token");
-          const refresh_token = hashParams.get("refresh_token");
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+          if (exchangeError) {
+            throw exchangeError;
+          }
+        } else if (tokenHash && otpType) {
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
 
-          if (!access_token || !refresh_token) {
-            throw new Error("Missing authentication tokens in callback URL.");
+          if (verifyError) {
+            throw verifyError;
+          }
+        } else {
+          const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+
+          if (!accessToken || !refreshToken) {
+            throw new Error("Unsupported authentication callback payload.");
           }
 
           const { error: setSessionError } = await supabase.auth.setSession({
-            access_token,
-            refresh_token,
+            access_token: accessToken,
+            refresh_token: refreshToken,
           });
 
           if (setSessionError) {
             throw setSessionError;
           }
-        } else {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
-          if (exchangeError) {
-            throw exchangeError;
-          }
         }
 
+        window.history.replaceState({}, document.title, "/auth/callback");
         navigate("/", { replace: true });
       } catch (err) {
         console.error("Authentication error:", err);
@@ -51,7 +65,7 @@ export default function AuthCallbackPage() {
       }
     };
 
-    handleCallback();
+    void handleCallback();
   }, [navigate]);
 
   if (error) {
