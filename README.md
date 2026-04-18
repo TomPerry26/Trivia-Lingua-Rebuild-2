@@ -69,3 +69,19 @@ vercel --prod=false
 # Production redeploy (new build using Production-scoped env vars)
 vercel --prod
 ```
+
+## Supabase Auth parity checklist (staging + production)
+
+In **both** Supabase projects (staging and production), keep auth provider settings aligned:
+
+1. Enable the same OAuth provider in both projects (for this app, usually `google`), or intentionally disable it in both.
+2. In the provider callback/redirect settings, include every active callback URL:
+   - `https://<staging-domain>/auth/callback`
+   - `https://<production-domain>/auth/callback`
+   - any active preview/alias QA domains that sign in users
+3. Ensure `VITE_SUPABASE_OAUTH_PROVIDER` in each deployment scope matches a provider that is enabled in that Supabase project.
+
+Important:
+
+- Do **not** leave legacy hash-route callbacks (for example `/#/auth/callback`) in provider configuration.
+- This app uses path-based callback routing: `/auth/callback`.
