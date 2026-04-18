@@ -846,6 +846,117 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  if (path === "progress-data") {
+    if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+
+    const url = new URL(req.url, "http://localhost");
+    const year = url.searchParams.get("year");
+    const month = url.searchParams.get("month");
+    const monthPrefix = year && month ? `${year}-${month}` : null;
+
+    const { token, user } = await getAuthenticatedUser(req);
+    if (!token || !user) {
+      return jsonOk({
+        progress: {
+          daily_words_read: 0,
+          total_words_read: 0,
+          current_streak: 0,
+          longest_streak: 0,
+          total_quizzes_completed: 0,
+          daily_target: 1000,
+          quiz_words: 0,
+          external_words: 0,
+        },
+        recentAttempts: [],
+        dailyActivity: [],
+        dailyTarget: 1000,
+        currentStreak: 0,
+        lastActivityDate: null,
+      });
+    }
+
+    const supabaseUser = createSupabaseUserClient(token);
+    const [progressRes, quizAttemptsRes, externalLogsRes] = await Promise.all([
+      supabaseUser
+        .from("user_progress")
+        .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabaseUser
+        .from("quiz_attempts")
+        .select("id, quiz_id, score, words_read, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabaseUser
+        .from("external_reading_logs")
+        .select("reading_date, words_read")
+        .eq("user_id", user.id),
+    ]);
+
+    if (progressRes.error) return jsonError("Failed to fetch user progress", 500, progressRes.error);
+    if (quizAttemptsRes.error) return jsonError("Failed to fetch quiz attempts", 500, quizAttemptsRes.error);
+    if (externalLogsRes.error) return jsonError("Failed to fetch external reading logs", 500, externalLogsRes.error);
+
+    const progress = progressRes.data ?? {
+      daily_words_read: 0,
+      total_words_read: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      total_quizzes_completed: 0,
+      daily_target: 1000,
+      last_activity_date: null,
+    };
+
+    const attempts = quizAttemptsRes.data ?? [];
+    const quizIds = Array.from(new Set(attempts.map((attempt) => attempt.quiz_id)));
+    const quizzesById = new Map<number, string>();
+    if (quizIds.length > 0) {
+      const quizzesRes = await supabaseAdmin.from("quizzes").select("id, title").in("id", quizIds);
+      if (quizzesRes.error) return jsonError("Failed to fetch quiz titles", 500, quizzesRes.error);
+      for (const quiz of quizzesRes.data ?? []) {
+        quizzesById.set(quiz.id, quiz.title);
+      }
+    }
+
+    const recentAttempts = attempts.slice(0, 10).map((attempt) => ({
+      id: attempt.id,
+      quiz_title: quizzesById.get(attempt.quiz_id) ?? `Quiz ${attempt.quiz_id}`,
+      score: attempt.score ?? 0,
+      words_read: attempt.words_read ?? 0,
+      created_at: attempt.created_at,
+    }));
+
+    const dailyWordMap = new Map<string, number>();
+    for (const attempt of attempts) {
+      const date = String(attempt.created_at).slice(0, 10);
+      if (monthPrefix && !date.startsWith(monthPrefix)) continue;
+      dailyWordMap.set(date, (dailyWordMap.get(date) ?? 0) + (attempt.words_read ?? 0));
+    }
+    for (const log of externalLogsRes.data ?? []) {
+      const date = String(log.reading_date);
+      if (monthPrefix && !date.startsWith(monthPrefix)) continue;
+      dailyWordMap.set(date, (dailyWordMap.get(date) ?? 0) + (log.words_read ?? 0));
+    }
+
+    const dailyActivity = Array.from(dailyWordMap.entries())
+      .map(([date, total_words]) => ({ date, total_words }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return jsonOk({
+      progress: {
+        ...progress,
+        quiz_words: progress.daily_words_read ?? 0,
+        external_words: 0,
+      },
+      recentAttempts,
+      dailyActivity,
+      dailyTarget: progress.daily_target ?? 1000,
+      currentStreak: progress.current_streak ?? 0,
+      lastActivityDate: progress.last_activity_date ?? null,
+    });
+  }
+
   if (path === "progress/email-opt-in") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
