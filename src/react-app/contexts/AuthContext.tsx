@@ -27,12 +27,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    const exchangeCodeFromCurrentUrlIfPresent = async () => {
+      // Canonical flow should return to /auth/callback, but some provider/site-url
+      // configurations can land back on "/" with ?code=...
+      if (window.location.pathname === "/auth/callback") return;
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get("code");
+      if (!code) return;
+
+      authTelemetry.info({
+        stage: "callback",
+        event: "oauth_code_detected_outside_callback_route",
+        outcome: "attempt",
+        details: {
+          path: window.location.pathname,
+        },
+      });
+
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        authTelemetry.error({
+          stage: "callback",
+          event: "token_exchange_failed_outside_callback_route",
+          outcome: "failure",
+          details: {
+            message: error.message,
+            path: window.location.pathname,
+          },
+        });
+        throw error;
+      }
+
+      window.history.replaceState({}, document.title, window.location.pathname);
+      authTelemetry.info({
+        stage: "callback",
+        event: "oauth_code_exchanged_outside_callback_route",
+        outcome: "success",
+        details: {
+          path: window.location.pathname,
+        },
+      });
+    };
+
     const bootstrapSession = async () => {
       authTelemetry.info({
         stage: "start",
         event: "session_bootstrap_started",
         outcome: "attempt",
       });
+      await exchangeCodeFromCurrentUrlIfPresent();
       const { data } = await supabase.auth.getSession();
       if (!isMounted) return;
       setUser(data.session?.user ?? null);
