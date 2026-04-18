@@ -31,10 +31,4 @@ assertSupabaseHostMatchesDeploymentTier({
   sourceName: VITE_DEPLOYMENT_TIER ? "VITE_DEPLOYMENT_TIER" : "VITE_VERCEL_ENV",
 });
 
-export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-  },
-});
+export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY);
