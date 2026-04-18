@@ -1,6 +1,6 @@
 import { listAdminFeedback, listAdminMessages, listBlogPosts, listTopics } from "../src/server/queries.js";
 import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
-import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
+import { createSupabaseUserClient, supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
 import { getUserEntitlement, requireEntitlement } from "../src/server/entitlements.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
 import { canFetchQuiz, getAccessRequired, getQuizVisibilityTier } from "../src/shared/quiz-access.js";
@@ -73,6 +73,13 @@ type AuthContext = {
     userId: string | null;
   };
   entitlement: Awaited<ReturnType<typeof getUserEntitlement>>;
+};
+
+const getAuthenticatedUser = async (req: Request) => {
+  const token = getAuthToken(req);
+  if (!token) return { token: null, user: null };
+  const userRes = await supabaseAnon.auth.getUser(token);
+  return { token, user: userRes.data.user ?? null, userError: userRes.error };
 };
 
 const enrichQuizzes = async (quizzes: QuizBase[]) => {
@@ -228,7 +235,7 @@ export default async function handler(req: Request): Promise<Response> {
     const enrichedLatest = await enrichQuizzes((latestRes.data ?? []) as QuizBase[]);
 
     const homeRowQuizResults = await Promise.all(
-      rows.map((_row) => {
+      rows.map(() => {
         return supabaseAdmin
           .from("quizzes")
           .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
@@ -421,14 +428,11 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonError("score and words_read are required", 400);
     }
 
-    const token = getAuthToken(req);
-    if (!token) return jsonError("Authentication required", 401);
-
-    const userRes = await supabaseAnon.auth.getUser(token);
-    const user = userRes.data.user;
-    if (!user) return jsonError("Authentication required", 401, userRes.error);
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
     const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
     if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -455,8 +459,8 @@ export default async function handler(req: Request): Promise<Response> {
     };
 
     const [attemptRes, completionRes, incrementCompletionRes] = await Promise.all([
-      supabaseAdmin.from("quiz_attempts").insert(attemptPayload),
-      supabaseAdmin
+      supabaseUser.from("quiz_attempts").insert(attemptPayload),
+      supabaseUser
         .from("quiz_completions")
         .upsert({ user_id: user.id, quiz_id: quizId, completed_at: new Date().toISOString() }, { onConflict: "user_id,quiz_id" }),
       supabaseAdmin.rpc("increment_quiz_completions", { p_quiz_id: quizId }),
@@ -469,7 +473,7 @@ export default async function handler(req: Request): Promise<Response> {
       await supabaseAdmin.rpc("increment", { table_name: "quizzes", row_id: quizId, column_name: "completions", by_amount: 1 });
     }
 
-    const progressRes = await supabaseAdmin
+    const progressRes = await supabaseUser
       .from("user_progress")
       .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
       .eq("user_id", user.id)
@@ -497,7 +501,7 @@ export default async function handler(req: Request): Promise<Response> {
     const dailyTarget = prior.daily_target ?? 1000;
     const goalReached = dailyWordsRead >= dailyTarget && (prior.daily_words_read ?? 0) < dailyTarget;
 
-    const progressUpsert = await supabaseAdmin.from("user_progress").upsert(
+    const progressUpsert = await supabaseUser.from("user_progress").upsert(
       {
         user_id: user.id,
         daily_words_read: dailyWordsRead,
@@ -649,7 +653,6 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "external-reading") {
     if (req.method !== "POST") return methodNotAllowed(req.method, ["POST"]);
     const body = (await req.json().catch(() => null)) as {
-      user_id?: string;
       words_read?: number;
       source_type?: string;
       details?: string;
@@ -660,9 +663,16 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonError("words_read, source_type, and reading_date are required", 400);
     }
 
-    if (!body.user_id) return jsonOk({ success: true }, 201);
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
-    const { error } = await supabaseAdmin.from("external_reading_logs").insert(body);
+    const { error } = await supabaseUser.from("external_reading_logs").insert({
+      ...body,
+      user_id: user.id,
+    });
     if (error) return jsonError("Failed to save external reading", 500, error);
 
     return jsonOk({ success: true }, 201);
@@ -756,8 +766,8 @@ export default async function handler(req: Request): Promise<Response> {
 
     const url = new URL(req.url, "http://localhost");
     const localDate = url.searchParams.get("local_date") ?? new Date().toISOString().slice(0, 10);
-    const token = getAuthToken(req);
-    if (!token) {
+    const { token, user } = await getAuthenticatedUser(req);
+    if (!token || !user) {
       return jsonOk({
         daily_words_read: 0,
         total_words_read: 0,
@@ -771,29 +781,15 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    const userRes = await supabaseAnon.auth.getUser(token);
-    const user = userRes.data.user;
-    if (!user) {
-      return jsonOk({
-        daily_words_read: 0,
-        total_words_read: 0,
-        current_streak: 0,
-        longest_streak: 0,
-        total_quizzes_completed: 0,
-        daily_target: 1000,
-        last_activity_date: null,
-        quiz_words: 0,
-        external_words: 0,
-      });
-    }
+    const supabaseUser = createSupabaseUserClient(token);
 
     const [progressRes, externalRes] = await Promise.all([
-      supabaseAdmin
+      supabaseUser
         .from("user_progress")
         .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabaseAdmin
+      supabaseUser
         .from("external_reading_logs")
         .select("words_read")
         .eq("user_id", user.id)
@@ -824,13 +820,17 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "progress/email-opt-in") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
-    const body = (await req.json().catch(() => null)) as { user_id?: string; email_opt_in?: boolean } | null;
+    const body = (await req.json().catch(() => null)) as { email_opt_in?: boolean } | null;
     if (typeof body?.email_opt_in !== "boolean") return jsonError("email_opt_in is required", 400);
-    if (!body.user_id) return jsonOk({ success: true });
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
-    const { error } = await supabaseAdmin
+    const { error } = await supabaseUser
       .from("user_progress")
-      .upsert({ user_id: body.user_id, email_opt_in: body.email_opt_in }, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, email_opt_in: body.email_opt_in }, { onConflict: "user_id" });
 
     if (error) return jsonError("Failed to update email opt-in", 500, error);
     return jsonOk({ success: true });
@@ -839,19 +839,16 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "progress/target") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
-    const token = getAuthToken(req);
-    if (!token) return jsonError("Authentication required", 401);
-
-    const userRes = await supabaseAnon.auth.getUser(token);
-    const user = userRes.data.user;
-    if (!user) return jsonError("Authentication required", 401, userRes.error);
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
     const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
     if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
     const body = (await req.json().catch(() => null)) as { daily_target?: number } | null;
     if (typeof body?.daily_target !== "number") return jsonError("daily_target is required", 400);
 
-    const { error } = await supabaseAdmin
+    const { error } = await supabaseUser
       .from("user_progress")
       .upsert({ user_id: user.id, daily_target: body.daily_target }, { onConflict: "user_id" });
 

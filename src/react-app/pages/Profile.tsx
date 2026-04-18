@@ -3,6 +3,7 @@ import { User, Mail, Calendar, LogOut, Smartphone, ArrowRight, HelpCircle, Messa
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useProgressQuery } from "../hooks/useProgressQuery";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -77,7 +78,7 @@ export default function ProfilePage() {
   const handleEmailOptInChange = async (checked: boolean) => {
     setIsSaving(true);
     try {
-      const response = await fetch("/api/progress/email-opt-in", {
+      const response = await fetchWithSupabaseAuth("/api/progress/email-opt-in", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email_opt_in: checked }),

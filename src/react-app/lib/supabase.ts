@@ -1,5 +1,5 @@
 import { createClient } from "../../shared/supabase-client";
-import { assertSupabaseHostMatchesDeploymentTier } from "../../shared/supabase-tier-assertions";
+import { assertDeploymentTierConsistency, assertSupabaseHostMatchesDeploymentTier } from "../../shared/supabase-tier-assertions";
 
 const {
   VITE_SUPABASE_URL,
@@ -21,6 +21,12 @@ if (missingClientEnvVars.length > 0) {
     `Missing required Supabase client environment variable(s): ${missingNames}. Add them to your .env file before starting the app.`,
   );
 }
+
+assertDeploymentTierConsistency({
+  deploymentTier: VITE_DEPLOYMENT_TIER,
+  vercelEnv: VITE_VERCEL_ENV,
+  context: "client",
+});
 
 assertSupabaseHostMatchesDeploymentTier({
   deploymentTierRaw: VITE_DEPLOYMENT_TIER ?? VITE_VERCEL_ENV,

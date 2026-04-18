@@ -111,3 +111,5 @@ Important:
 
 - Do **not** leave legacy hash-route callbacks (for example `/#/auth/callback`) in provider configuration.
 - This app uses path-based callback routing: `/auth/callback`.
+
+For a recurring operational cadence (weekly audit + pre-release full audit), use `docs/supabase-auth-provider-audit.md`.

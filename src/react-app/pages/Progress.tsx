@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import LevelCard from "@/react-app/components/LevelCard";
 import { useAuth } from "@/react-app/contexts/AuthContext";
 import { getGuestProgress } from "@/react-app/lib/guestProgress";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 export default function ProgressPage() {
   const queryClient = useQueryClient();
   const {
@@ -56,7 +57,7 @@ export default function ProgressPage() {
     setSubmittingExternal(true);
     try {
       const words = parseInt(externalWords);
-      const response = await fetch("/api/external-reading", {
+      const response = await fetchWithSupabaseAuth("/api/external-reading", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
