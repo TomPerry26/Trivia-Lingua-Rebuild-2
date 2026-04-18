@@ -33,6 +33,16 @@ test("validateSupabaseEnvironment passes for valid staging config", () => {
   assert.doesNotThrow(() => validateSupabaseEnvironment(baseOptions));
 });
 
+test("validateSupabaseEnvironment accepts full URL tier host variables", () => {
+  assert.doesNotThrow(() =>
+    validateSupabaseEnvironment({
+      ...baseOptions,
+      stagingHost: "https://preview-project.supabase.co",
+      productionHost: "https://prod-project.supabase.co",
+    }),
+  );
+});
+
 test("validateSupabaseEnvironment fails with uniform missing variable error", () => {
   assert.throws(
     () =>

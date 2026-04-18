@@ -21,6 +21,17 @@ type SupabaseEnvValidationOptions = {
 
 const normalizeValue = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
+const normalizeHostValue = (value: string | undefined) => {
+  const normalized = normalizeValue(value);
+  if (!normalized) return "";
+
+  try {
+    return new URL(normalized).host.toLowerCase();
+  } catch {
+    return normalized.replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  }
+};
+
 const joinEnvNames = (names: string[]) => names.join(", ");
 
 const formatEnvError = (context: RuntimeContext, details: string[]) =>
@@ -102,7 +113,7 @@ export const validateSupabaseEnvironment = ({
   }
 
   const expectedHost =
-    resolvedTier === "staging" ? normalizeValue(stagingHost) : normalizeValue(productionHost);
+    resolvedTier === "staging" ? normalizeHostValue(stagingHost) : normalizeHostValue(productionHost);
 
   if (!expectedHost) {
     const missingHostVarName = resolvedTier === "staging" ? stagingHostVarName : productionHostVarName;

@@ -15,7 +15,16 @@ type DeploymentTierConsistencyOptions = {
   context: "server" | "client";
 };
 
-const normalizeHost = (value: string | undefined) => value?.trim().toLowerCase() || "";
+const normalizeHost = (value: string | undefined) => {
+  const normalized = value?.trim().toLowerCase() || "";
+  if (!normalized) return "";
+
+  try {
+    return new URL(normalized).host.toLowerCase();
+  } catch {
+    return normalized.replace(/^https?:\/\//, "").split("/")[0] || "";
+  }
+};
 
 const getHostFromUrl = (supabaseUrl: string, sourceName: string, context: "server" | "client") => {
   try {
