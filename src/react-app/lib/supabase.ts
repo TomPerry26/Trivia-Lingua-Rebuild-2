@@ -1,5 +1,5 @@
 import { createClient } from "../../shared/supabase-client";
-import { assertDeploymentTierConsistency, assertSupabaseHostMatchesDeploymentTier } from "../../shared/supabase-tier-assertions";
+import { validateSupabaseEnvironment } from "../../shared/env-validation";
 
 const {
   VITE_SUPABASE_URL,
@@ -10,32 +10,22 @@ const {
   VITE_SUPABASE_PRODUCTION_HOST,
 } = import.meta.env;
 
-const missingClientEnvVars = [
-  ["VITE_SUPABASE_URL", VITE_SUPABASE_URL],
-  ["VITE_SUPABASE_ANON_KEY", VITE_SUPABASE_ANON_KEY],
-].filter(([, value]) => !value);
-
-if (missingClientEnvVars.length > 0) {
-  const missingNames = missingClientEnvVars.map(([name]) => name).join(", ");
-  throw new Error(
-    `Missing required Supabase client environment variable(s): ${missingNames}. Add them to your .env file before starting the app.`,
-  );
-}
-
-assertDeploymentTierConsistency({
-  deploymentTier: VITE_DEPLOYMENT_TIER,
-  vercelEnv: VITE_VERCEL_ENV,
+validateSupabaseEnvironment({
   context: "client",
-});
-
-// Only the host variable for the active tier is required (Preview or Production).
-assertSupabaseHostMatchesDeploymentTier({
-  deploymentTierRaw: VITE_DEPLOYMENT_TIER ?? VITE_VERCEL_ENV,
+  requiredVars: [
+    ["VITE_SUPABASE_URL", VITE_SUPABASE_URL],
+    ["VITE_SUPABASE_ANON_KEY", VITE_SUPABASE_ANON_KEY],
+  ],
   supabaseUrl: VITE_SUPABASE_URL,
+  supabaseUrlVarName: "VITE_SUPABASE_URL",
+  deploymentTier: VITE_DEPLOYMENT_TIER,
+  deploymentTierSourceName: "VITE_DEPLOYMENT_TIER",
+  vercelEnv: VITE_VERCEL_ENV,
+  vercelEnvSourceName: "VITE_VERCEL_ENV",
   stagingHost: VITE_SUPABASE_PREVIEW_HOST,
+  stagingHostVarName: "VITE_SUPABASE_PREVIEW_HOST",
   productionHost: VITE_SUPABASE_PRODUCTION_HOST,
-  context: "client",
-  sourceName: VITE_DEPLOYMENT_TIER ? "VITE_DEPLOYMENT_TIER" : "VITE_VERCEL_ENV",
+  productionHostVarName: "VITE_SUPABASE_PRODUCTION_HOST",
 });
 
 export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY);
