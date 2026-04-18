@@ -11,8 +11,8 @@ import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
-import { supabase } from "@/react-app/lib/supabase";
 import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -24,21 +24,6 @@ function getGuestSessionId(): string {
     localStorage.setItem(storageKey, sessionId);
   }
   return sessionId;
-}
-
-async function fetchWithSupabaseAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const headers = new Headers(init?.headers);
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  return fetch(input, {
-    ...init,
-    headers,
-  });
 }
 
 interface Question {
@@ -204,7 +189,7 @@ export default function QuizPage() {
     if (user) {
       // Authenticated user - use the authenticated endpoint
       try {
-        const response = await fetch(`/api/quizzes/${quizId}/complete`, {
+        const response = await fetchWithSupabaseAuth(`/api/quizzes/${quizId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

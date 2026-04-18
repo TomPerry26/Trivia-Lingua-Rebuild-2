@@ -10,6 +10,7 @@ import EmailOptInModal from "@/react-app/components/EmailOptInModal";
 import GoalReachedModal from "@/react-app/components/GoalReachedModal";
 import LevelReachedModal from "@/react-app/components/LevelReachedModal";
 import { getGuestProgress, updateGuestDailyTarget } from "@/react-app/lib/guestProgress";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 interface LayoutProps {
   children: ReactNode;
 }
@@ -106,7 +107,7 @@ export default function Layout({
   // Check if user is admin
   useEffect(() => {
     if (user) {
-      fetch('/api/users/me')
+      fetchWithSupabaseAuth('/api/users/me')
         .then(res => res.ok ? res.json() : null)
         .then((data: UserData | null) => {
           if (data?.access_level === 'beta') {
