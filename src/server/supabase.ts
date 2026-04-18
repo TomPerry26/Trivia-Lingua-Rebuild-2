@@ -1,41 +1,30 @@
 import { createClient } from "../shared/supabase-client.js";
-import { assertDeploymentTierConsistency, assertSupabaseHostMatchesDeploymentTier } from "../shared/supabase-tier-assertions.js";
+import { validateSupabaseEnvironment } from "../shared/env-validation.js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const deploymentTier = process.env.DEPLOYMENT_TIER ?? process.env.VERCEL_ENV;
-const supabasePreviewHost = process.env.SUPABASE_PREVIEW_HOST;
-const supabaseProductionHost = process.env.SUPABASE_PRODUCTION_HOST;
 
-const missingServerEnvVars = [
-  ["SUPABASE_URL", supabaseUrl],
-  ["SUPABASE_ANON_KEY", supabaseAnonKey],
-].filter(([, value]) => !value);
-
-if (missingServerEnvVars.length > 0) {
-  const missingNames = missingServerEnvVars.map(([name]) => name).join(", ");
-  throw new Error(`Missing required Supabase server environment variable(s): ${missingNames}.`);
-}
+validateSupabaseEnvironment({
+  context: "server",
+  requiredVars: [
+    ["SUPABASE_URL", supabaseUrl],
+    ["SUPABASE_ANON_KEY", supabaseAnonKey],
+  ],
+  supabaseUrl,
+  supabaseUrlVarName: "SUPABASE_URL",
+  deploymentTier: process.env.DEPLOYMENT_TIER,
+  deploymentTierSourceName: "DEPLOYMENT_TIER",
+  vercelEnv: process.env.VERCEL_ENV,
+  vercelEnvSourceName: "VERCEL_ENV",
+  stagingHost: process.env.SUPABASE_PREVIEW_HOST,
+  stagingHostVarName: "SUPABASE_PREVIEW_HOST",
+  productionHost: process.env.SUPABASE_PRODUCTION_HOST,
+  productionHostVarName: "SUPABASE_PRODUCTION_HOST",
+});
 
 const resolvedSupabaseUrl = supabaseUrl as string;
 const resolvedSupabaseAnonKey = supabaseAnonKey as string;
-
-assertDeploymentTierConsistency({
-  deploymentTier: process.env.DEPLOYMENT_TIER,
-  vercelEnv: process.env.VERCEL_ENV,
-  context: "server",
-});
-
-// Only the host variable for the active tier is required (Preview or Production).
-assertSupabaseHostMatchesDeploymentTier({
-  deploymentTierRaw: deploymentTier,
-  supabaseUrl: resolvedSupabaseUrl,
-  stagingHost: supabasePreviewHost,
-  productionHost: supabaseProductionHost,
-  context: "server",
-  sourceName: process.env.DEPLOYMENT_TIER ? "DEPLOYMENT_TIER" : "VERCEL_ENV",
-});
 
 export const supabaseAnon = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey);
 
