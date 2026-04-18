@@ -6,7 +6,7 @@ const {
   VITE_SUPABASE_ANON_KEY,
   VITE_DEPLOYMENT_TIER,
   VITE_VERCEL_ENV,
-  VITE_SUPABASE_STAGING_HOST,
+  VITE_SUPABASE_PREVIEW_HOST,
   VITE_SUPABASE_PRODUCTION_HOST,
 } = import.meta.env;
 
@@ -28,10 +28,11 @@ assertDeploymentTierConsistency({
   context: "client",
 });
 
+// Only the host variable for the active tier is required (Preview or Production).
 assertSupabaseHostMatchesDeploymentTier({
   deploymentTierRaw: VITE_DEPLOYMENT_TIER ?? VITE_VERCEL_ENV,
   supabaseUrl: VITE_SUPABASE_URL,
-  stagingHost: VITE_SUPABASE_STAGING_HOST,
+  stagingHost: VITE_SUPABASE_PREVIEW_HOST,
   productionHost: VITE_SUPABASE_PRODUCTION_HOST,
   context: "client",
   sourceName: VITE_DEPLOYMENT_TIER ? "VITE_DEPLOYMENT_TIER" : "VITE_VERCEL_ENV",
