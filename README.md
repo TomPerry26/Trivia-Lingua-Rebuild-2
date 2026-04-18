@@ -26,7 +26,7 @@ Required client variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_SUPABASE_OAUTH_PROVIDER` (e.g. `google` or `github`; must be enabled in Supabase Auth)
+- `VITE_SUPABASE_OAUTH_PROVIDER` (must be enabled in Supabase Auth; current flow assumes `google`)
 - `VITE_PUBLIC_SITE_URL` (for canonical/meta URLs, e.g. `https://www.trivialingua.com`)
 - `VITE_OG_IMAGE_URL` (optional override for social preview image)
 
@@ -38,58 +38,39 @@ Required client variables:
 npm run dev
 ```
 
+## Auth invariants
+
+- **One callback route:** `/auth/callback`
+- **One auth flow:** Supabase SDK OAuth PKCE (`signInWithOAuth` + `exchangeCodeForSession`)
+- **One environment mapping rule:** Vercel Preview maps to **staging**, and Vercel Production maps to **production**
+
 ## Vercel deployment notes
 
 - Set the Vercel **Build Command** to `npm run build` (or leave it empty so Vercel uses the package script default).
-- Configure the following environment variables in your Vercel project settings:
-  - `VITE_SUPABASE_URL`
-  - `VITE_SUPABASE_ANON_KEY`
-  - `VITE_DEPLOYMENT_TIER` (`preview` for Preview, `production` for Production)
-  - `VITE_SUPABASE_PREVIEW_HOST` (Preview scope only; for example `abc123.supabase.co`)
-  - `VITE_SUPABASE_PRODUCTION_HOST` (Production scope only; for example `xyz789.supabase.co`)
-  - `VITE_SUPABASE_OAUTH_PROVIDER`
-  - `VITE_PUBLIC_SITE_URL`
-  - `VITE_OG_IMAGE_URL`
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
-  - `DEPLOYMENT_TIER` (`preview` for Preview, `production` for Production)
-  - `SUPABASE_PREVIEW_HOST` (Preview scope only; for example `abc123.supabase.co`)
-  - `SUPABASE_PRODUCTION_HOST` (Production scope only; for example `xyz789.supabase.co`)
-  - `SUPABASE_SERVICE_ROLE_KEY`
 - Keep `SUPABASE_SERVICE_ROLE_KEY` **server-only** (Vercel function environment variables only).
 - Never prefix the service role key with `VITE_`, or it will be exposed to browser bundles.
-- Startup/build fails fast if the deployment tier does not match that tier's expected Supabase host.
+- Startup/build fails fast if a deployment tier points at the wrong Supabase host.
 
-### Required environment scoping (Preview vs Production)
+### Final minimal environment matrix
 
-Do **not** set Supabase credentials as global/shared values. Each scope must define only what it needs for that tier:
+Do **not** set Supabase credentials as global/shared values. Scope them in Vercel by environment.
 
-- **Preview** scope
-  - `VITE_SUPABASE_URL` (Preview Supabase URL)
-  - `VITE_SUPABASE_ANON_KEY` (Preview anon key)
-  - `VITE_DEPLOYMENT_TIER=preview`
-  - `VITE_SUPABASE_PREVIEW_HOST` (expected host for Preview URL)
-  - `SUPABASE_URL` (Preview Supabase URL)
-  - `SUPABASE_ANON_KEY` (Preview anon key)
-  - `DEPLOYMENT_TIER=preview`
-  - `SUPABASE_PREVIEW_HOST` (expected host for Preview URL)
-  - `SUPABASE_SERVICE_ROLE_KEY` (if used by your preview server functions)
-  - **Do not set** the `*_PRODUCTION_HOST` variables in Preview scope.
-- **Production** scope
-  - `VITE_SUPABASE_URL` (Production Supabase URL)
-  - `VITE_SUPABASE_ANON_KEY` (Production anon key)
-  - `VITE_DEPLOYMENT_TIER=production`
-  - `VITE_SUPABASE_PRODUCTION_HOST` (expected host for Production URL)
-  - `SUPABASE_URL` (Production Supabase URL)
-  - `SUPABASE_ANON_KEY` (Production anon key)
-  - `DEPLOYMENT_TIER=production`
-  - `SUPABASE_PRODUCTION_HOST` (expected host for Production URL)
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - **Do not set** the `*_PREVIEW_HOST` variables in Production scope.
+| Variable | Preview scope (staging) | Production scope |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | staging project URL | production project URL |
+| `VITE_SUPABASE_ANON_KEY` | staging anon key | production anon key |
+| `VITE_SUPABASE_PREVIEW_HOST` | staging host (for example `abc123.supabase.co`) | _unset_ |
+| `VITE_SUPABASE_PRODUCTION_HOST` | _unset_ | production host (for example `xyz789.supabase.co`) |
+| `VITE_SUPABASE_OAUTH_PROVIDER` | `google` | `google` |
+| `VITE_PUBLIC_SITE_URL` | staging public URL | production public URL |
+| `VITE_OG_IMAGE_URL` | optional | optional |
+| `SUPABASE_URL` | staging project URL | production project URL |
+| `SUPABASE_ANON_KEY` | staging anon key | production anon key |
+| `SUPABASE_PREVIEW_HOST` | staging host | _unset_ |
+| `SUPABASE_PRODUCTION_HOST` | _unset_ | production host |
+| `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key (if preview server functions need it) | production service-role key |
 
-### Why this startup check exists
-
-These assertions intentionally fail startup/build when a deployment tier points at the wrong Supabase project (for example, Preview accidentally using Production credentials). This guard prevents cross-environment auth/session failures and data contamination that can happen when Vercel scope variables are copied globally.
+> Tier resolution rule: rely on Vercel environment context (`VERCEL_ENV`) and keep the mapping **Preview → staging** and **Production → production**.
 
 After updating values in Project Settings, trigger fresh deploys for both environments so bundles are rebuilt with the correct `VITE_*` values:
 
@@ -101,7 +82,6 @@ vercel --prod=false
 vercel --prod
 ```
 
-
 ## Auth flow release step (required when auth logic changes)
 
 When auth flow logic changes (sign-in, callback handling, token/session bootstrap, or provider redirects), include this release procedure:
@@ -109,7 +89,7 @@ When auth flow logic changes (sign-in, callback handling, token/session bootstra
 1. Bump `CACHE_VERSION` in `public/sw.js` so existing clients evict legacy cached assets on next service worker activation.
 2. Redeploy staging/Preview with a fresh build and run the preview auth smoke suite (`.github/scripts/smoke-test.sh`).
 3. In browser QA for the staging domain, clear site data and unregister the service worker before testing.
-4. Re-test sign-in in a fresh incognito/private window to eliminate legacy cache/session influence.
+4. Re-test sign-in in a fresh incognito/private window to eliminate stale cache/session influence.
 5. Promote and redeploy production with a fresh build, then re-run smoke checks.
 
 The detailed required auth change procedure and rollback/triage runbook are in `docs/auth-operations.md`.
@@ -118,16 +98,13 @@ The detailed required auth change procedure and rollback/triage runbook are in `
 
 In **both** Supabase projects (staging and production), keep auth provider settings aligned:
 
-1. Enable the same OAuth provider in both projects (for this app, usually `google`), or intentionally disable it in both.
+1. Enable the same OAuth provider in both projects (for this app, `google`), or intentionally disable it in both.
 2. In the provider callback/redirect settings, include every active callback URL:
    - `https://<staging-domain>/auth/callback`
    - `https://<production-domain>/auth/callback`
    - any active preview/alias QA domains that sign in users
 3. Ensure `VITE_SUPABASE_OAUTH_PROVIDER` in each deployment scope matches a provider that is enabled in that Supabase project.
 
-Important:
-
-- Do **not** leave legacy hash-route callbacks (for example `/#/auth/callback`) in provider configuration.
-- This app uses path-based callback routing: `/auth/callback`.
+This app uses path-based callback routing at `/auth/callback`.
 
 For a recurring operational cadence (weekly audit + pre-release full audit), use `docs/supabase-auth-provider-audit.md`.
