@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
+import { authTelemetry } from "@/react-app/lib/authTelemetry";
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -15,8 +16,22 @@ export default function AuthCallbackPage() {
         const searchParams = new URLSearchParams(window.location.search);
         const callbackError = searchParams.get("error");
         const callbackErrorDescription = searchParams.get("error_description");
+        authTelemetry.info({
+          stage: "callback",
+          event: "callback_received",
+          outcome: "attempt",
+        });
 
         if (callbackError) {
+          authTelemetry.error({
+            stage: "callback",
+            event: "callback_error_param",
+            outcome: "failure",
+            details: {
+              callbackError,
+              callbackErrorDescription,
+            },
+          });
           throw new Error(callbackErrorDescription || callbackError);
         }
 
@@ -27,8 +42,19 @@ export default function AuthCallbackPage() {
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
           if (exchangeError) {
+            authTelemetry.error({
+              stage: "callback",
+              event: "token_exchange_failed",
+              outcome: "failure",
+              details: { message: exchangeError.message },
+            });
             throw exchangeError;
           }
+          authTelemetry.info({
+            stage: "callback",
+            event: "token_exchange_succeeded",
+            outcome: "success",
+          });
         } else if (tokenHash && otpType) {
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
@@ -36,8 +62,19 @@ export default function AuthCallbackPage() {
           });
 
           if (verifyError) {
+            authTelemetry.error({
+              stage: "callback",
+              event: "magic_link_verify_failed",
+              outcome: "failure",
+              details: { message: verifyError.message },
+            });
             throw verifyError;
           }
+          authTelemetry.info({
+            stage: "callback",
+            event: "magic_link_verify_succeeded",
+            outcome: "success",
+          });
         } else {
           const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
           const accessToken = hashParams.get("access_token");
@@ -53,14 +90,36 @@ export default function AuthCallbackPage() {
           });
 
           if (setSessionError) {
+            authTelemetry.error({
+              stage: "callback",
+              event: "set_session_failed",
+              outcome: "failure",
+              details: { message: setSessionError.message },
+            });
             throw setSessionError;
           }
+          authTelemetry.info({
+            stage: "callback",
+            event: "legacy_hash_session_succeeded",
+            outcome: "success",
+          });
         }
 
         window.history.replaceState({}, document.title, "/auth/callback");
+        authTelemetry.info({
+          stage: "session_ready",
+          event: "callback_completed",
+          outcome: "success",
+        });
         navigate("/", { replace: true });
       } catch (err) {
         console.error("Authentication error:", err);
+        authTelemetry.error({
+          stage: "callback",
+          event: "callback_failed",
+          outcome: "failure",
+          details: { message: err instanceof Error ? err.message : "unknown callback error" },
+        });
         setError(err instanceof Error ? err.message : "Authentication failed. Please try again.");
       }
     };
