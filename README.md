@@ -38,14 +38,21 @@ npm run dev
 - Configure the following environment variables in your Vercel project settings:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+  - `VITE_DEPLOYMENT_TIER` (`preview`/`staging` for Preview, `production` for Production)
+  - `VITE_SUPABASE_STAGING_HOST` (for example `abc123.supabase.co`)
+  - `VITE_SUPABASE_PRODUCTION_HOST` (for example `xyz789.supabase.co`)
   - `VITE_SUPABASE_OAUTH_PROVIDER`
   - `VITE_PUBLIC_SITE_URL`
   - `VITE_OG_IMAGE_URL`
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+  - `DEPLOYMENT_TIER` (`preview`/`staging` for Preview, `production` for Production)
+  - `SUPABASE_STAGING_HOST` (for example `abc123.supabase.co`)
+  - `SUPABASE_PRODUCTION_HOST` (for example `xyz789.supabase.co`)
+  - `SUPABASE_SERVICE_ROLE_KEY`
 - Keep `SUPABASE_SERVICE_ROLE_KEY` **server-only** (Vercel function environment variables only).
 - Never prefix the service role key with `VITE_`, or it will be exposed to browser bundles.
+- Startup/build now fails fast if the deployment tier does not match the Supabase host for that tier.
 
 ### Required environment scoping (Preview vs Production)
 
