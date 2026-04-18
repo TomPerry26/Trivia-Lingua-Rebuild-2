@@ -70,6 +70,16 @@ vercel --prod=false
 vercel --prod
 ```
 
+
+## Auth flow release step (required when auth logic changes)
+
+When auth flow logic changes (sign-in, callback handling, token/session bootstrap, or provider redirects), include this release procedure:
+
+1. Bump `CACHE_VERSION` in `public/sw.js` so existing clients evict legacy cached assets on next service worker activation.
+2. Redeploy the target environment(s) (at minimum staging/Preview, plus Production when shipping).
+3. In browser QA for the staging domain, clear site data and unregister the service worker before testing.
+4. Re-test sign-in in a fresh incognito/private window to eliminate legacy cache/session influence.
+
 ## Supabase Auth parity checklist (staging + production)
 
 In **both** Supabase projects (staging and production), keep auth provider settings aligned:
