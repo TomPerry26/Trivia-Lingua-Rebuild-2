@@ -1,5 +1,5 @@
 import { createClient } from "../../shared/supabase-client";
-import { validateSupabaseEnvironment } from "../../shared/env-validation";
+import { assertSupabaseKeyMatchesUrlHost, validateSupabaseEnvironment } from "../../shared/env-validation";
 
 const {
   VITE_SUPABASE_URL,
@@ -20,6 +20,14 @@ validateSupabaseEnvironment({
   deploymentTierSourceName: "VITE_DEPLOYMENT_TIER",
   vercelEnv: VITE_VERCEL_ENV,
   vercelEnvSourceName: "VITE_VERCEL_ENV",
+});
+
+assertSupabaseKeyMatchesUrlHost({
+  context: "client",
+  supabaseUrl: VITE_SUPABASE_URL,
+  supabaseUrlVarName: "VITE_SUPABASE_URL",
+  supabaseKey: VITE_SUPABASE_ANON_KEY,
+  supabaseKeyVarName: "VITE_SUPABASE_ANON_KEY",
 });
 
 export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, {

@@ -23,6 +23,14 @@ type SupabaseAlignmentOptions = {
   secondaryVarName: string;
 };
 
+type SupabaseKeyAlignmentOptions = {
+  context: RuntimeContext;
+  supabaseUrl: string;
+  supabaseUrlVarName: string;
+  supabaseKey: string;
+  supabaseKeyVarName: string;
+};
+
 const normalizeValue = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
 const joinEnvNames = (names: string[]) => names.join(", ");
@@ -86,6 +94,62 @@ export const assertSupabaseUrlsShareHost = ({
       `Supabase host mismatch between ${primaryVarName} and ${secondaryVarName}.`,
       `Received "${primaryHost}" vs "${secondaryHost}".`,
       "This causes auth/session drift between browser and API clients.",
+    ]);
+  }
+};
+
+const parseJwtPayload = (jwt: string): Record<string, unknown> => {
+  const parts = jwt.split(".");
+  if (parts.length < 2) {
+    throw new Error("JWT is malformed.");
+  }
+
+  const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  const encodedPayload = `${normalized}${padding}`;
+  const decoded =
+    typeof atob === "function"
+      ? atob(encodedPayload)
+      : Buffer.from(encodedPayload, "base64").toString("utf8");
+  return JSON.parse(decoded) as Record<string, unknown>;
+};
+
+export const assertSupabaseKeyMatchesUrlHost = ({
+  context,
+  supabaseUrl,
+  supabaseUrlVarName,
+  supabaseKey,
+  supabaseKeyVarName,
+}: SupabaseKeyAlignmentOptions) => {
+  const urlHost = parseSupabaseUrlHost({
+    supabaseUrl,
+    sourceName: supabaseUrlVarName,
+    context,
+  });
+
+  let issuerHost: string | null = null;
+  try {
+    const payload = parseJwtPayload(supabaseKey);
+    const issuer = typeof payload.iss === "string" ? payload.iss : null;
+    issuerHost = issuer ? new URL(issuer).host.toLowerCase() : null;
+  } catch {
+    throw formatEnvError(context, [
+      `Invalid Supabase key in ${supabaseKeyVarName}.`,
+      "Expected a JWT-formatted Supabase key with an issuer host.",
+    ]);
+  }
+
+  if (!issuerHost) {
+    throw formatEnvError(context, [
+      `Invalid Supabase key in ${supabaseKeyVarName}.`,
+      "Missing JWT issuer host.",
+    ]);
+  }
+
+  if (issuerHost !== urlHost) {
+    throw formatEnvError(context, [
+      `Supabase key mismatch between ${supabaseKeyVarName} and ${supabaseUrlVarName}.`,
+      `Issuer host "${issuerHost}" does not match URL host "${urlHost}".`,
     ]);
   }
 };

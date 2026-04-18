@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertSupabaseUrlsShareHost, parseDeploymentTier, validateSupabaseEnvironment } from "./env-validation.ts";
+import {
+  assertSupabaseKeyMatchesUrlHost,
+  assertSupabaseUrlsShareHost,
+  parseDeploymentTier,
+  validateSupabaseEnvironment,
+} from "./env-validation.ts";
 
 const baseOptions = {
   context: "server" as const,
@@ -86,5 +91,47 @@ test("assertSupabaseUrlsShareHost fails for mismatched hosts", () => {
         secondaryVarName: "VITE_SUPABASE_URL",
       }),
     /Supabase host mismatch between SUPABASE_URL and VITE_SUPABASE_URL/,
+  );
+});
+
+test("assertSupabaseKeyMatchesUrlHost passes when key issuer host matches URL host", () => {
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: "https://abc.supabase.co/auth/v1",
+      role: "anon",
+    }),
+  ).toString("base64url");
+  const fakeJwt = `aaa.${payload}.zzz`;
+
+  assert.doesNotThrow(() =>
+    assertSupabaseKeyMatchesUrlHost({
+      context: "server",
+      supabaseUrl: "https://abc.supabase.co",
+      supabaseUrlVarName: "SUPABASE_URL",
+      supabaseKey: fakeJwt,
+      supabaseKeyVarName: "SUPABASE_ANON_KEY",
+    }),
+  );
+});
+
+test("assertSupabaseKeyMatchesUrlHost fails when key issuer host mismatches URL host", () => {
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: "https://xyz.supabase.co/auth/v1",
+      role: "anon",
+    }),
+  ).toString("base64url");
+  const fakeJwt = `aaa.${payload}.zzz`;
+
+  assert.throws(
+    () =>
+      assertSupabaseKeyMatchesUrlHost({
+        context: "server",
+        supabaseUrl: "https://abc.supabase.co",
+        supabaseUrlVarName: "SUPABASE_URL",
+        supabaseKey: fakeJwt,
+        supabaseKeyVarName: "SUPABASE_ANON_KEY",
+      }),
+    /Supabase key mismatch between SUPABASE_ANON_KEY and SUPABASE_URL/,
   );
 });

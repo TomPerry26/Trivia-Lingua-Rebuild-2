@@ -63,7 +63,7 @@ Do **not** set Supabase credentials as global/shared values. Scope them in Verce
 | `VITE_OG_IMAGE_URL` | optional | optional |
 | `SUPABASE_URL` | staging project URL | production project URL |
 | `SUPABASE_ANON_KEY` | staging anon key | production anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key (if preview server functions need it) | production service-role key |
+| `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key | production service-role key |
 
 > Tier resolution rule: rely on Vercel environment context (`VERCEL_ENV`) and keep the mapping **Preview → staging** and **Production → production**.
 
