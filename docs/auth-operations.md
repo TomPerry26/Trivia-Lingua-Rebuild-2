@@ -58,19 +58,27 @@ All auth stage logs should include JSON fields:
 The CI smoke script validates:
 
 1. **guest browsing** (`/`, `/quizzes`)
-2. **Google login** authorize endpoint resolves on expected Supabase host
-3. **magic-link login** OTP initiation succeeds
-4. **member quiz access** authenticated user can fetch configured member quiz
-5. **progress write/read** authenticated completion write + progress read succeed
-6. `/api/users/me` authenticated response sanity
+2. **OAuth initiation endpoint** resolves on expected Supabase host (`/auth/v1/authorize`)
+3. **callback completion** succeeds via magic-link token hash verification (`verifyOtp`)
+4. **session establishment** succeeds after callback verification (`getSession` returns access token + user)
+5. **member quiz access** authenticated user can fetch configured member quiz
+6. **progress write/read** authenticated completion write + progress read succeed
+7. `/api/users/me` authenticated response includes identity fields (`id`, `email`)
 
 Required secrets per environment:
 
 - `*_SMOKE_BEARER_TOKEN`
 - `*_SMOKE_MAGIC_LINK_EMAIL`
 - `*_SMOKE_MEMBER_QUIZ_ID`
+- `*_SUPABASE_SERVICE_ROLE_KEY` (used to generate callback verification links in CI)
 
 (`*` = `STAGING` or `PRODUCTION` in workflow secrets.)
+
+### Required CI gates for promotion
+
+- **Preview auth smoke gate (required for production promotion)** in `.github/workflows/deploy-production.yml` runs first and targets the **latest Ready Preview URL** from Vercel.
+- **Deploy Production** is blocked unless that preview gate succeeds.
+- **Production auth smoke check (post-deploy)** runs after production deploy to catch environment-specific regressions immediately.
 
 ## 4) Auth incident triage runbook
 
@@ -133,3 +141,20 @@ In addition to release-time checks, run a scheduled parity audit to catch drift 
 
 - Weekly quick pass and before every auth-related release.
 - Use `docs/supabase-auth-provider-audit.md` as the source checklist.
+
+## 7) Failure visibility and response ownership
+
+### Where to view failures
+
+- **GitHub Actions → Deploy Production workflow**
+  - `Preview auth smoke gate (required for production promotion)`
+  - `Production auth smoke check (post-deploy)`
+- **GitHub Actions → Deploy Staging workflow**
+  - `Preview auth smoke suite (staging)`
+- **Vercel deployment logs** for the resolved Preview/Production URL shown in each workflow run.
+
+### Who owns response
+
+- **Primary owner:** Platform / Release Engineering on-call (GitHub Actions + deployment pipeline triage).
+- **Secondary owner:** Authentication feature owner (Supabase config, callback behavior, `/api/users/me` contract).
+- **Escalation:** if auth smoke is red for more than 15 minutes, open an auth incident and follow Section 4 runbook.
