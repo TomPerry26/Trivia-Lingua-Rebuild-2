@@ -15,6 +15,14 @@ type SupabaseEnvValidationOptions = {
   vercelEnvSourceName?: string;
 };
 
+type SupabaseAlignmentOptions = {
+  context: RuntimeContext;
+  primaryUrl: string;
+  primaryVarName: string;
+  secondaryUrl: string;
+  secondaryVarName: string;
+};
+
 const normalizeValue = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
 const joinEnvNames = (names: string[]) => names.join(", ");
@@ -36,6 +44,52 @@ export const parseDeploymentTier = (rawTier: string | undefined): DeploymentTier
   return null;
 };
 
+const parseSupabaseUrlHost = ({
+  supabaseUrl,
+  sourceName,
+  context,
+}: {
+  supabaseUrl: string;
+  sourceName: string;
+  context: RuntimeContext;
+}) => {
+  try {
+    return new URL(supabaseUrl).host.toLowerCase();
+  } catch {
+    throw formatEnvError(context, [
+      `Invalid Supabase URL in ${sourceName}: "${supabaseUrl}".`,
+      'Expected a full URL like "https://<project>.supabase.co".',
+    ]);
+  }
+};
+
+export const assertSupabaseUrlsShareHost = ({
+  context,
+  primaryUrl,
+  primaryVarName,
+  secondaryUrl,
+  secondaryVarName,
+}: SupabaseAlignmentOptions) => {
+  const primaryHost = parseSupabaseUrlHost({
+    supabaseUrl: primaryUrl,
+    sourceName: primaryVarName,
+    context,
+  });
+  const secondaryHost = parseSupabaseUrlHost({
+    supabaseUrl: secondaryUrl,
+    sourceName: secondaryVarName,
+    context,
+  });
+
+  if (primaryHost !== secondaryHost) {
+    throw formatEnvError(context, [
+      `Supabase host mismatch between ${primaryVarName} and ${secondaryVarName}.`,
+      `Received "${primaryHost}" vs "${secondaryHost}".`,
+      "This causes auth/session drift between browser and API clients.",
+    ]);
+  }
+};
+
 export const validateSupabaseEnvironment = ({
   context,
   requiredVars,
@@ -53,14 +107,11 @@ export const validateSupabaseEnvironment = ({
   }
 
   const resolvedSupabaseUrl = supabaseUrl as string;
-  try {
-    new URL(resolvedSupabaseUrl);
-  } catch {
-    throw formatEnvError(context, [
-      `Invalid Supabase URL in ${supabaseUrlVarName}: "${resolvedSupabaseUrl}".`,
-      'Expected a full URL like "https://<project>.supabase.co".',
-    ]);
-  }
+  parseSupabaseUrlHost({
+    supabaseUrl: resolvedSupabaseUrl,
+    sourceName: supabaseUrlVarName,
+    context,
+  });
 
   if (deploymentTier && vercelEnv) {
     const resolvedDeploymentTier = parseDeploymentTier(deploymentTier);

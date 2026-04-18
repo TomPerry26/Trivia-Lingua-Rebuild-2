@@ -245,7 +245,19 @@ export default async function handler(req: Request): Promise<Response> {
       supabaseAdmin.from("home_rows").select("id, title, topic_tag").order("id", { ascending: true }),
     ]);
 
-    if (latestRes.error) return jsonError("Failed to load latest quizzes", 500, latestRes.error);
+    if (latestRes.error) {
+      const relationMissing =
+        latestRes.error.code === "PGRST205" ||
+        latestRes.error.message?.includes("Could not find the table 'public.quizzes'");
+      if (relationMissing) {
+        return jsonError(
+          "Failed to load latest quizzes",
+          500,
+          "Supabase project appears misconfigured for this deployment (missing public.quizzes). Check SUPABASE_URL/VITE_SUPABASE_URL scope.",
+        );
+      }
+      return jsonError("Failed to load latest quizzes", 500, latestRes.error);
+    }
     if (rowsRes.error) return jsonError("Failed to load home rows", 500, rowsRes.error);
 
     const rows = rowsRes.data ?? [];

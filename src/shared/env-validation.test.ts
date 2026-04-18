@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseDeploymentTier, validateSupabaseEnvironment } from "./env-validation.ts";
+import { assertSupabaseUrlsShareHost, parseDeploymentTier, validateSupabaseEnvironment } from "./env-validation.ts";
 
 const baseOptions = {
   context: "server" as const,
@@ -60,5 +60,31 @@ test("validateSupabaseEnvironment catches deployment tier mismatch", () => {
         vercelEnv: "preview",
       }),
     /Tier mismatch/,
+  );
+});
+
+test("assertSupabaseUrlsShareHost passes when URLs share host", () => {
+  assert.doesNotThrow(() =>
+    assertSupabaseUrlsShareHost({
+      context: "server",
+      primaryUrl: "https://abc.supabase.co",
+      primaryVarName: "SUPABASE_URL",
+      secondaryUrl: "https://abc.supabase.co",
+      secondaryVarName: "VITE_SUPABASE_URL",
+    }),
+  );
+});
+
+test("assertSupabaseUrlsShareHost fails for mismatched hosts", () => {
+  assert.throws(
+    () =>
+      assertSupabaseUrlsShareHost({
+        context: "server",
+        primaryUrl: "https://abc.supabase.co",
+        primaryVarName: "SUPABASE_URL",
+        secondaryUrl: "https://xyz.supabase.co",
+        secondaryVarName: "VITE_SUPABASE_URL",
+      }),
+    /Supabase host mismatch between SUPABASE_URL and VITE_SUPABASE_URL/,
   );
 });

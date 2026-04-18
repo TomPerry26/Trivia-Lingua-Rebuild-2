@@ -49,6 +49,7 @@ npm run dev
 - Keep `SUPABASE_SERVICE_ROLE_KEY` **server-only** (Vercel function environment variables only).
 - Never prefix the service role key with `VITE_`, or it will be exposed to browser bundles.
 - Startup/build fails fast for missing required Supabase vars, invalid Supabase URLs, and `DEPLOYMENT_TIER` vs `VERCEL_ENV` mismatches.
+- Server startup also fails fast if `SUPABASE_URL` and `VITE_SUPABASE_URL` point to different Supabase hosts, or if anon keys differ.
 
 ### Final minimal environment matrix
 
