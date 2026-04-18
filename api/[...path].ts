@@ -710,13 +710,19 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "progress/target") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
-    const body = (await req.json().catch(() => null)) as { user_id?: string; daily_target?: number } | null;
+    const token = getAuthToken(req);
+    if (!token) return jsonError("Authentication required", 401);
+
+    const userRes = await supabaseAnon.auth.getUser(token);
+    const user = userRes.data.user;
+    if (!user) return jsonError("Authentication required", 401, userRes.error);
+
+    const body = (await req.json().catch(() => null)) as { daily_target?: number } | null;
     if (typeof body?.daily_target !== "number") return jsonError("daily_target is required", 400);
-    if (!body.user_id) return jsonOk({ success: true });
 
     const { error } = await supabaseAdmin
       .from("user_progress")
-      .upsert({ user_id: body.user_id, daily_target: body.daily_target }, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, daily_target: body.daily_target }, { onConflict: "user_id" });
 
     if (error) return jsonError("Failed to update progress target", 500, error);
     return jsonOk({ success: true });
