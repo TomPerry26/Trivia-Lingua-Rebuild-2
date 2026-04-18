@@ -71,23 +71,16 @@ export const assertSupabaseHostMatchesDeploymentTier = ({
   const normalizedStagingHost = normalizeHost(stagingHost);
   const normalizedProductionHost = normalizeHost(productionHost);
 
-  const missingExpectedHosts = [
-    ["staging", normalizedStagingHost],
-    ["production", normalizedProductionHost],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
+  const expectedHost = tier === "staging" ? normalizedStagingHost : normalizedProductionHost;
 
-  if (missingExpectedHosts.length > 0) {
+  if (!expectedHost) {
+    const missingVariableName = tier === "staging" ? "stagingHost" : "productionHost";
     throw new Error(
-      `Missing required Supabase host assertion variable(s) for ${context}: ${missingExpectedHosts.join(
-        ", ",
-      )}. Set both staging and production expected hosts to enforce deployment-tier safety checks.`,
+      `Missing required Supabase host assertion variable for ${context} ${tier} deployment: ${missingVariableName}.`,
     );
   }
 
   const actualHost = getHostFromUrl(supabaseUrl, sourceName, context);
-  const expectedHost = tier === "staging" ? normalizedStagingHost : normalizedProductionHost;
 
   if (actualHost !== expectedHost) {
     throw new Error(
