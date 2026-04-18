@@ -1,5 +1,5 @@
 import { createClient } from "../shared/supabase-client.js";
-import { assertSupabaseHostMatchesDeploymentTier } from "../shared/supabase-tier-assertions.js";
+import { assertDeploymentTierConsistency, assertSupabaseHostMatchesDeploymentTier } from "../shared/supabase-tier-assertions.js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -20,6 +20,12 @@ if (missingServerEnvVars.length > 0) {
 
 const resolvedSupabaseUrl = supabaseUrl as string;
 const resolvedSupabaseAnonKey = supabaseAnonKey as string;
+
+assertDeploymentTierConsistency({
+  deploymentTier: process.env.DEPLOYMENT_TIER,
+  vercelEnv: process.env.VERCEL_ENV,
+  context: "server",
+});
 
 assertSupabaseHostMatchesDeploymentTier({
   deploymentTierRaw: deploymentTier,
@@ -45,3 +51,17 @@ if (!supabaseServiceRoleKey && isVercelPreview) {
 export const supabaseAdmin = supabaseServiceRoleKey
   ? createClient(resolvedSupabaseUrl, supabaseServiceRoleKey)
   : supabaseAnon;
+
+export const createSupabaseUserClient = (accessToken: string) =>
+  createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });

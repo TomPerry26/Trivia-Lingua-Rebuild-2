@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Mail } from "lucide-react";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 interface EmailOptInModalProps {
   onClose: () => void;
@@ -13,7 +14,7 @@ export default function EmailOptInModal({ onClose }: EmailOptInModalProps) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await fetch("/api/progress/email-opt-in", {
+      await fetchWithSupabaseAuth("/api/progress/email-opt-in", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email_opt_in: isOptedIn }),

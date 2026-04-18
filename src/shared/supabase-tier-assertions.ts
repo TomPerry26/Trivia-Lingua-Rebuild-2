@@ -9,6 +9,12 @@ type SupabaseTierAssertionOptions = {
   sourceName: string;
 };
 
+type DeploymentTierConsistencyOptions = {
+  deploymentTier: string | undefined;
+  vercelEnv: string | undefined;
+  context: "server" | "client";
+};
+
 const normalizeHost = (value: string | undefined) => value?.trim().toLowerCase() || "";
 
 const getHostFromUrl = (supabaseUrl: string, sourceName: string, context: "server" | "client") => {
@@ -26,6 +32,29 @@ const resolveTier = (deploymentTierRaw: string | undefined): DeploymentTier | nu
   if (normalizedTier === "preview" || normalizedTier === "staging") return "staging";
   if (normalizedTier === "production" || normalizedTier === "prod") return "production";
   return null;
+};
+
+export const assertDeploymentTierConsistency = ({
+  deploymentTier,
+  vercelEnv,
+  context,
+}: DeploymentTierConsistencyOptions) => {
+  if (!deploymentTier || !vercelEnv) return;
+
+  const resolvedDeploymentTier = resolveTier(deploymentTier);
+  const resolvedVercelTier = resolveTier(vercelEnv);
+
+  if (!resolvedDeploymentTier || !resolvedVercelTier) return;
+  if (resolvedDeploymentTier === resolvedVercelTier) return;
+
+  throw new Error(
+    [
+      `Deployment tier mismatch for ${context}.`,
+      `DEPLOYMENT_TIER resolved to "${resolvedDeploymentTier}" from "${deploymentTier}".`,
+      `VERCEL_ENV resolved to "${resolvedVercelTier}" from "${vercelEnv}".`,
+      "Align environment scoping in Vercel Preview vs Production before continuing.",
+    ].join(" "),
+  );
 };
 
 export const assertSupabaseHostMatchesDeploymentTier = ({

@@ -126,3 +126,10 @@ For every auth-related change (login, redirect, callback, token/session bootstra
 4. Validate login in a fresh incognito/private browser session.
 5. Promote to production with a fresh production deploy.
 6. Re-run smoke checks in production post-deploy.
+
+## 6) Periodic provider parity audit (staging + production)
+
+In addition to release-time checks, run a scheduled parity audit to catch drift between Supabase projects and Vercel scopes.
+
+- Weekly quick pass and before every auth-related release.
+- Use `docs/supabase-auth-provider-audit.md` as the source checklist.
