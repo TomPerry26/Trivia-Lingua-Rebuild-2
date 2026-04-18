@@ -48,6 +48,9 @@ interface Quiz {
   topic: string;
   difficulty: string;
   min_access_level: AccessLevel;
+  visibility_tier?: AccessLevel;
+  access_required?: AccessLevel | null;
+  is_locked?: boolean;
   questions: Question[];
 }
 
@@ -105,7 +108,8 @@ export default function QuizPage() {
           setQuiz(quizData);
           
           // Check if user has access to this quiz
-          const canAccess = hasAccess(accessLevel, quizData.min_access_level);
+          const requiredAccess = quizData.access_required;
+          const canAccess = !requiredAccess && hasAccess(accessLevel, quizData.min_access_level);
           setHasQuizAccess(canAccess);
         }
       } catch (error) {
