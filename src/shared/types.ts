@@ -2,6 +2,8 @@
  * Shared types between client and server
  */
 
+export type EntitlementTier = "free" | "pro" | "trial";
+
 // Quiz-related types
 export interface Quiz {
   id: number;
@@ -61,4 +63,17 @@ export interface HomeRowData {
 export interface HomeData {
   latestQuizzes: Quiz[];
   homeRows: HomeRowData[];
+}
+
+export interface UserIdentity {
+  id: string;
+  email: string | null;
+}
+
+export interface UserEntitlementState {
+  tier: EntitlementTier;
+  source: "default-free" | "user_entitlements" | "profiles";
+  trialEndsAt: string | null;
+  currentPeriodEndsAt: string | null;
+  updatedAt: string | null;
 }

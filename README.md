@@ -2,6 +2,10 @@
 
 Trivia Lingua is a Vite + React app deployed on Vercel with Supabase for auth/data.
 
+## Entitlements and future billing
+
+Entitlements are modeled separately from auth identity so future paywall logic can evolve without changing login/session handling. See `docs/entitlements.md` for the data model, current no-op defaults, and billing webhook integration plan.
+
 ## Local development
 
 1. Install dependencies:
