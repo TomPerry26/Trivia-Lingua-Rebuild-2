@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { EmailOtpType, Session, User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
 import { authTelemetry } from "@/react-app/lib/authTelemetry";
 
@@ -27,83 +27,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    const exchangeAuthPayloadFromUrl = async () => {
-      if (window.location.pathname === "/auth/callback") {
-        return;
-      }
-
-      const searchParams = new URLSearchParams(window.location.search);
-      const code = searchParams.get("code");
-      const tokenHash = searchParams.get("token_hash");
-      const otpType = searchParams.get("type") as EmailOtpType | null;
-
-      if (!code && !(tokenHash && otpType)) {
-        return;
-      }
-
-      authTelemetry.info({
-        stage: "callback",
-        event: "callback_payload_detected_outside_callback_route",
-        outcome: "attempt",
-        details: {
-          path: window.location.pathname,
-          hasCode: Boolean(code),
-          hasTokenHash: Boolean(tokenHash),
-        },
-      });
-
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          authTelemetry.error({
-            stage: "callback",
-            event: "token_exchange_failed_outside_callback_route",
-            outcome: "failure",
-            details: {
-              message: error.message,
-              path: window.location.pathname,
-            },
-          });
-          throw error;
-        }
-      } else if (tokenHash && otpType) {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: otpType,
-        });
-
-        if (error) {
-          authTelemetry.error({
-            stage: "callback",
-            event: "magic_link_verify_failed_outside_callback_route",
-            outcome: "failure",
-            details: {
-              message: error.message,
-              path: window.location.pathname,
-            },
-          });
-          throw error;
-        }
-      }
-
-      window.history.replaceState({}, document.title, window.location.pathname);
-      authTelemetry.info({
-        stage: "callback",
-        event: "callback_payload_exchanged_outside_callback_route",
-        outcome: "success",
-        details: {
-          path: window.location.pathname,
-        },
-      });
-    };
-
     const bootstrapSession = async () => {
       authTelemetry.info({
         stage: "start",
         event: "session_bootstrap_started",
         outcome: "attempt",
       });
-      await exchangeAuthPayloadFromUrl();
       const { data } = await supabase.auth.getSession();
       if (!isMounted) return;
       setUser(data.session?.user ?? null);
