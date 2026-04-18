@@ -43,6 +43,29 @@ npm run dev
   - `VITE_OG_IMAGE_URL`
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - Keep `SUPABASE_SERVICE_ROLE_KEY` **server-only** (Vercel function environment variables only).
 - Never prefix the service role key with `VITE_`, or it will be exposed to browser bundles.
+
+### Required environment scoping (Preview vs Production)
+
+Do **not** set Supabase credentials as global/shared values. Assign them explicitly by Vercel environment scope:
+
+- **Preview** (staging Supabase project)
+  - `VITE_SUPABASE_URL` = staging project URL
+  - `VITE_SUPABASE_ANON_KEY` = staging anon key
+  - `SUPABASE_URL` = staging project URL
+  - `SUPABASE_ANON_KEY` = staging anon key
+  - `SUPABASE_SERVICE_ROLE_KEY` = staging service role key
+- **Production** (production Supabase project)
+  - same variable names, with production values
+
+After updating values in Project Settings, trigger fresh deploys for both environments so bundles are rebuilt with the correct `VITE_*` values:
+
+```bash
+# Preview redeploy (new build using Preview-scoped env vars)
+vercel --prod=false
+
+# Production redeploy (new build using Production-scoped env vars)
+vercel --prod
+```
