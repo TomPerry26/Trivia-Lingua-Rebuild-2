@@ -22,8 +22,8 @@ Run this checklist on a recurring cadence to keep staging (Preview) and producti
      - `https://<staging-domain>/auth/callback`
      - `https://<production-domain>/auth/callback`
    - Remove deprecated callbacks like `/#/auth/callback`.
-4. **Client env/provider parity**
-   - Confirm `VITE_SUPABASE_OAUTH_PROVIDER` in each Vercel scope maps to an enabled provider in the corresponding Supabase project.
+4. **Client/runtime provider parity**
+   - Confirm the provider used by the app sign-in flow is enabled in both Supabase projects.
    - Confirm `VITE_DEPLOYMENT_TIER` and `DEPLOYMENT_TIER` values match `VERCEL_ENV` in each scope.
 5. **Server-side verification and protected action checks**
    - Call `/api/users/me` with and without an auth token and confirm the API response reflects server token verification.

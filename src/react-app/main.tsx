@@ -10,19 +10,8 @@ if (window.location.hash.startsWith("#/")) {
   window.history.replaceState(null, "", `${migratedPath}${window.location.search}`);
 }
 
-// Register service worker for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('Service Worker registered:', registration);
-      })
-      .catch((error) => {
-        console.log('Service Worker registration failed:', error);
-      });
-  });
-}
+// Service worker registration intentionally disabled for now to prevent stale
+// auth bundles being served after deploys while we stabilize login flow.
 
 // Track PWA installation status
 window.addEventListener('load', () => {

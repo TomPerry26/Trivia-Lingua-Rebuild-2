@@ -66,8 +66,8 @@ The CI smoke script validates:
 
 1. **guest browsing** (`/`, `/quizzes`)
 2. **OAuth initiation endpoint** resolves on expected Supabase host (`/auth/v1/authorize`)
-3. **callback completion** succeeds via OAuth code exchange (`exchangeCodeForSession` path)
-4. **session establishment** succeeds after callback completion (`getSession` returns access token + user)
+3. **callback payload/session primitives** succeed via Supabase magic-link token verification (`verifyOtp` path)
+4. **session establishment** succeeds after token verification (`getSession` returns access token + user)
 5. **member quiz access** authenticated user can fetch configured member quiz
 6. **progress write/read** authenticated completion write + progress read succeed
 7. `/api/users/me` authenticated response includes identity fields (`id`, `email`)

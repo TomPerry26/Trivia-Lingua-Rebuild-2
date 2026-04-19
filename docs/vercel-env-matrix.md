@@ -15,9 +15,7 @@ Required keys:
 - `SUPABASE_SERVICE_ROLE_KEY` = staging service role key
 
 Optional guard keys:
-
-- `VITE_SUPABASE_PREVIEW_HOST` = expected preview host
-- `SUPABASE_PREVIEW_HOST` = expected preview host
+- none
 
 ## Production scope (production-only values)
 
@@ -30,9 +28,7 @@ Required keys:
 - `SUPABASE_SERVICE_ROLE_KEY` = production service role key
 
 Optional guard keys:
-
-- `VITE_SUPABASE_PRODUCTION_HOST` = expected production host
-- `SUPABASE_PRODUCTION_HOST` = expected production host
+- none
 
 ## Disallowed / cleanup rules
 

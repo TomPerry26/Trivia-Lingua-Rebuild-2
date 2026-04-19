@@ -17,10 +17,6 @@ validateSupabaseEnvironment({
   deploymentTierSourceName: "DEPLOYMENT_TIER",
   vercelEnv: process.env.VERCEL_ENV,
   vercelEnvSourceName: "VERCEL_ENV",
-  stagingHost: process.env.SUPABASE_PREVIEW_HOST,
-  stagingHostVarName: "SUPABASE_PREVIEW_HOST",
-  productionHost: process.env.SUPABASE_PRODUCTION_HOST,
-  productionHostVarName: "SUPABASE_PRODUCTION_HOST",
 });
 
 const resolvedSupabaseUrl = supabaseUrl as string;
@@ -28,19 +24,11 @@ const resolvedSupabaseAnonKey = supabaseAnonKey as string;
 
 export const supabaseAnon = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey);
 
-const isVercelPreview = process.env.VERCEL_ENV === "preview";
-
-if (!supabaseServiceRoleKey && !isVercelPreview) {
+if (!supabaseServiceRoleKey) {
   throw new Error("Missing required Supabase server environment variable: SUPABASE_SERVICE_ROLE_KEY.");
 }
 
-if (!supabaseServiceRoleKey && isVercelPreview) {
-  console.warn("SUPABASE_SERVICE_ROLE_KEY is missing in preview. Falling back to SUPABASE_ANON_KEY.");
-}
-
-export const supabaseAdmin = supabaseServiceRoleKey
-  ? createClient(resolvedSupabaseUrl, supabaseServiceRoleKey)
-  : supabaseAnon;
+export const supabaseAdmin = createClient(resolvedSupabaseUrl, supabaseServiceRoleKey);
 
 export const createSupabaseUserClient = (accessToken: string) =>
   createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
