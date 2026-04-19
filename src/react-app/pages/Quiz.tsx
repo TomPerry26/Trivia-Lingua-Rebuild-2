@@ -12,7 +12,16 @@ import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
 import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
-import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
+
+async function fetchWithSupabaseAuthLazy(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    const { fetchWithSupabaseAuth } = await import("@/react-app/lib/fetchWithSupabaseAuth");
+    return await fetchWithSupabaseAuth(input, init);
+  } catch (error) {
+    console.warn("Supabase auth fetch unavailable, falling back to fetch without auth header.", error);
+    return fetch(input, init);
+  }
+}
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -87,7 +96,7 @@ export default function QuizPage() {
         // Get user's access level
         let accessLevel: AccessLevel = 'guest';
         if (user) {
-          const profileResponse = await fetchWithSupabaseAuth('/api/users/me');
+          const profileResponse = await fetchWithSupabaseAuthLazy('/api/users/me');
           if (profileResponse.ok) {
             const profileData = await profileResponse.json();
             accessLevel = profileData.access_level || 'member';
@@ -102,7 +111,9 @@ export default function QuizPage() {
           return;
         }
 
-        const quizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
+        const quizResponse = user
+          ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`)
+          : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
@@ -193,7 +204,7 @@ export default function QuizPage() {
     if (user) {
       // Authenticated user - use the authenticated endpoint
       try {
-        const response = await fetchWithSupabaseAuth(`/api/quizzes/${quizId}/complete`, {
+        const response = await fetchWithSupabaseAuthLazy(`/api/quizzes/${quizId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -209,7 +220,9 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
+              const nextQuizResponse = user
+                ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`)
+                : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);
