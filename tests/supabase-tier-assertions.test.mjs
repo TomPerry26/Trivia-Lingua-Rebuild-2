@@ -27,7 +27,7 @@ test("staging tier with staging host set passes", () => {
     assertSupabaseHostMatchesDeploymentTier({
       ...baseOptions,
       deploymentTierRaw: "staging",
-      stagingHost: "abc.supabase.co",
+      stagingHost: "https://abc.supabase.co",
       productionHost: undefined,
     }),
   );
@@ -52,7 +52,7 @@ test("production tier with production host set passes", () => {
       ...baseOptions,
       deploymentTierRaw: "production",
       stagingHost: undefined,
-      productionHost: "abc.supabase.co",
+      productionHost: "https://abc.supabase.co",
     }),
   );
 });
