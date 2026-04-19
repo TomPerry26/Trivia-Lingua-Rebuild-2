@@ -80,6 +80,28 @@ export default function AuthCallbackPage() {
             outcome: "success",
           });
         } else {
+          const { data: existingSessionData, error: existingSessionError } = await supabase.auth.getSession();
+          if (existingSessionError) {
+            authTelemetry.error({
+              stage: "session_ready",
+              event: "session_lookup_failed",
+              outcome: "failure",
+              details: { message: existingSessionError.message },
+            });
+            throw existingSessionError;
+          }
+
+          if (existingSessionData.session?.user) {
+            authTelemetry.info({
+              stage: "session_ready",
+              event: "callback_completed_from_existing_session",
+              outcome: "success",
+            });
+            window.history.replaceState({}, document.title, "/auth/callback");
+            navigate("/", { replace: true });
+            return;
+          }
+
           authTelemetry.error({
             stage: "callback",
             event: "callback_payload_unsupported",

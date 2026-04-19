@@ -12,4 +12,8 @@ validateSupabaseEnvironment({
   supabaseUrlVarName: "VITE_SUPABASE_URL",
 });
 
-export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY);
+export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, {
+  auth: {
+    detectSessionInUrl: false,
+  },
+});
