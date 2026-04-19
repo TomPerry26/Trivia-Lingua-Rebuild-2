@@ -42,7 +42,7 @@ const SCROLL_POSITION_KEY = "quizzes-scroll-position";
 export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQuizCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const { user, redirectToLogin } = useAuth();
+  const { user } = useAuth();
 
   // Determine user's access level
   const effectiveAccessLevel = userAccessLevel || (user ? 'member' : 'guest');
@@ -102,13 +102,10 @@ export default function LazyQuizCard({ quiz, className, userAccessLevel }: LazyQ
               <span className="text-xs font-semibold text-gray-500">{quiz.difficulty}</span>
             </div>
             <h4 className="text-base font-bold text-gray-800 mb-1.5 truncate">{quiz.title}</h4>
-            <p className="text-xs text-amber-700 font-semibold mb-2">Member-only quiz</p>
-            <button
-              onClick={redirectToLogin}
-              className="text-xs font-semibold text-orange-600 hover:text-orange-700 underline underline-offset-2"
-            >
-              Sign up to unlock
-            </button>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>≈ {exactWordCount !== null ? exactWordCount.toLocaleString() : "500-1000"} words</span>
+            </div>
           </div>
           <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
         </div>
