@@ -1,5 +1,5 @@
 import { Lock } from "lucide-react";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import type { AccessLevel } from "@/shared/access-levels";
 
 interface AccessGateProps {
@@ -13,9 +13,9 @@ export default function AccessGate({ requiredLevel, onUpgrade }: AccessGateProps
   const getMessage = () => {
     if (!user && requiredLevel === 'member') {
       return {
-        title: "Sign in to play this quiz",
-        description: "Create a free account to track your progress, build streaks, and unlock more quizzes.",
-        buttonText: "Sign in",
+        title: "Member-only quiz",
+        description: "Create a free account to play this quiz, track your progress, and keep your streak going.",
+        buttonText: "Sign up / Sign in",
         action: redirectToLogin
       };
     }

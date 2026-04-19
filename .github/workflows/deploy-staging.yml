@@ -1,0 +1,76 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - staging
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-preview:
+    name: Deploy Preview/Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Vercel Preview (staging)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install --global vercel@latest
+          vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          deployment_url="$(vercel deploy --yes --token="$VERCEL_TOKEN")"
+          echo "deployment_url=${deployment_url}" >> "$GITHUB_OUTPUT"
+          echo "Staging deployment URL: ${deployment_url}"
+
+      - name: Preview auth smoke suite (staging)
+        env:
+          APP_BASE_URL: ${{ steps.deploy.outputs.deployment_url }}
+          EXPECTED_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          SMOKE_BEARER_TOKEN: ${{ secrets.STAGING_SMOKE_BEARER_TOKEN }}
+          SMOKE_MAGIC_LINK_EMAIL: ${{ secrets.STAGING_SMOKE_MAGIC_LINK_EMAIL }}
+          SMOKE_MEMBER_QUIZ_ID: ${{ secrets.STAGING_SMOKE_MEMBER_QUIZ_ID }}
+          OAUTH_PROVIDER: ${{ vars.OAUTH_PROVIDER || 'google' }}
+        run: ./.github/scripts/smoke-test.sh
+
+      - name: Mark commit as staged
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = context.sha;
+            const ref = `refs/tags/deployed-to-staging/${sha}`;
+            try {
+              await github.rest.git.createRef({ owner, repo, ref, sha });
+              core.info(`Created ${ref}`);
+            } catch (error) {
+              if (error.status === 422) {
+                core.info(`${ref} already exists; leaving as-is.`);
+              } else {
+                throw error;
+              }
+            }

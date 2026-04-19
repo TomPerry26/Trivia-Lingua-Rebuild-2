@@ -5,12 +5,23 @@ import confetti from "canvas-confetti";
 import QuestionFeedback from "../components/QuestionFeedback";
 import MetaTags from "../components/MetaTags";
 import { queryClient } from "@/react-app/lib/queryClient";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import QuizSchema from "../components/QuizSchema";
 import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
+
+async function fetchWithSupabaseAuthLazy(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    const { fetchWithSupabaseAuth } = await import("@/react-app/lib/fetchWithSupabaseAuth");
+    return await fetchWithSupabaseAuth(input, init);
+  } catch (error) {
+    console.warn("Supabase auth fetch unavailable, falling back to fetch without auth header.", error);
+    return fetch(input, init);
+  }
+}
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -46,6 +57,9 @@ interface Quiz {
   topic: string;
   difficulty: string;
   min_access_level: AccessLevel;
+  visibility_tier?: AccessLevel;
+  access_required?: AccessLevel | null;
+  is_locked?: boolean;
   questions: Question[];
 }
 
@@ -54,7 +68,8 @@ export default function QuizPage() {
   const navigate = useNavigate();
   
   // Extract quiz ID from either format: /quiz/:id or /es/quiz/:slugWithId
-  const quizId = params.id || (params.slugWithId ? String(extractIdFromSlug(params.slugWithId)) : null);
+  const extractedId = params.slugWithId ? extractIdFromSlug(params.slugWithId) : null;
+  const quizId = params.id ?? extractedId;
   const { user, isPending: authPending, redirectToLogin } = useAuth();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [hasQuizAccess, setHasQuizAccess] = useState(true);
@@ -81,7 +96,7 @@ export default function QuizPage() {
         // Get user's access level
         let accessLevel: AccessLevel = 'guest';
         if (user) {
-          const profileResponse = await fetch('/api/users/me');
+          const profileResponse = await fetchWithSupabaseAuthLazy('/api/users/me');
           if (profileResponse.ok) {
             const profileData = await profileResponse.json();
             accessLevel = profileData.access_level || 'member';
@@ -91,13 +106,21 @@ export default function QuizPage() {
         }
 
         // Fetch the quiz
-        const quizResponse = await fetch(`/api/quizzes/${quizId}`);
+        if (!quizId) {
+          setLoading(false);
+          return;
+        }
+
+        const quizResponse = user
+          ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`)
+          : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
           
           // Check if user has access to this quiz
-          const canAccess = hasAccess(accessLevel, quizData.min_access_level);
+          const requiredAccess = quizData.access_required;
+          const canAccess = !requiredAccess && hasAccess(accessLevel, quizData.min_access_level);
           setHasQuizAccess(canAccess);
         }
       } catch (error) {
@@ -181,7 +204,7 @@ export default function QuizPage() {
     if (user) {
       // Authenticated user - use the authenticated endpoint
       try {
-        const response = await fetch(`/api/quizzes/${quizId}/complete`, {
+        const response = await fetchWithSupabaseAuthLazy(`/api/quizzes/${quizId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -197,7 +220,9 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quizzes/${data.nextQuizId}`);
+              const nextQuizResponse = user
+                ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`)
+                : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);
@@ -434,8 +459,8 @@ export default function QuizPage() {
         <MetaTags
           title={`${quiz.title} - Trivia Lingua`}
           description={quizMetaDescription}
-          url={`https://k3ssqlqvt37e2.mocha.app${quizUrl}`}
-          image="https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg"
+          url={`${SITE_URL}${quizUrl}`}
+          image={OG_IMAGE_URL}
         />
         <QuizSchema quiz={quiz} />
         <div className="max-w-3xl mx-auto">

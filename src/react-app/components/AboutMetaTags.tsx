@@ -1,10 +1,11 @@
 import { Helmet } from "react-helmet-async";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
 
 export default function AboutMetaTags() {
   const title = "About Trivia Lingua | Learn Spanish Through Fun Trivia Quizzes";
   const description = "Learn how Trivia Lingua helps you learn Spanish through comprehensible input. Daily trivia quizzes on Harry Potter, Marvel, Taylor Swift, and more. All levels from superbeginner to advanced.";
-  const url = "https://www.trivialingua.com/about";
-  const imageUrl = "https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg";
+  const url = `${SITE_URL}/about`;
+  const imageUrl = OG_IMAGE_URL;
 
   return (
     <Helmet>

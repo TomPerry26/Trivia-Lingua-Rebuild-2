@@ -1,9 +1,10 @@
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { Sparkles, BookOpen, TrendingUp, Smartphone } from "lucide-react";
 import MetaTags from "@/react-app/components/MetaTags";
 import LoginPageSchema from "@/react-app/components/LoginPageSchema";
+import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
 
 // No animations needed - removed for stability
 interface BeforeInstallPromptEvent extends Event {
@@ -16,10 +17,14 @@ export default function LoginPage() {
   const {
     user,
     redirectToLogin,
+    signInWithMagicLink,
     isPending
   } = useAuth();
   const navigate = useNavigate();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [magicLinkMessage, setMagicLinkMessage] = useState<string | null>(null);
   const [currentTopicIndex, setCurrentTopicIndex] = useState(0);
   const topics = ["Harry Potter", "Marvel", "Taylor Swift", "Star Wars", "Geography", "Music", "Film", "Sport", "Star Trek", "History", "Batman", "Food", "Culture", "Pokemon", "Animals"];
   useEffect(() => {
@@ -54,6 +59,28 @@ export default function LoginPage() {
       console.error('Failed to show install prompt:', error);
     }
   };
+  const handleStartPlaying = async () => {
+    setLoginError(null);
+    setMagicLinkMessage(null);
+    try {
+      await redirectToLogin();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to start OAuth login.";
+      setLoginError(message);
+    }
+  };
+  const handleMagicLinkSignIn = async () => {
+    setLoginError(null);
+    setMagicLinkMessage(null);
+
+    try {
+      await signInWithMagicLink(email);
+      setMagicLinkMessage("Check your email for a secure sign-in link.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to send magic-link email.";
+      setLoginError(message);
+    }
+  };
   if (isPending) {
     return <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
         <div className="animate-spin">
@@ -62,7 +89,7 @@ export default function LoginPage() {
       </div>;
   }
   return <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 flex flex-col">
-      <MetaTags title="Learn Spanish with Daily Trivia Quizzes | Trivia Lingua" description="Free Spanish reading practice through fun trivia quizzes about Harry Potter, Marvel, music, and more. Track progress, build streaks, and improve your Spanish naturally at every level." url="https://k3ssqlqvt37e2.mocha.app/login" image="https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg" />
+      <MetaTags title="Learn Spanish with Daily Trivia Quizzes | Trivia Lingua" description="Free Spanish reading practice through fun trivia quizzes about Harry Potter, Marvel, music, and more. Track progress, build streaks, and improve your Spanish naturally at every level." url={`${SITE_URL}/login`} image={OG_IMAGE_URL} />
       <LoginPageSchema />
       {/* Fixed Top Header */}
       <header className="bg-white/80 backdrop-blur-lg border-b border-orange-100 fixed top-0 left-0 right-0 z-50 h-16">
@@ -83,7 +110,7 @@ export default function LoginPage() {
               <span className="sm:hidden text-xl leading-none">☕</span>
               <span className="hidden sm:inline text-sm">☕ Support this project</span>
             </a>
-            <button onClick={redirectToLogin} className="px-3 md:px-6 py-2 md:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-sm md:text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap">Start playing</button>
+            <button onClick={handleStartPlaying} className="px-3 md:px-6 py-2 md:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-sm md:text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap">Start playing</button>
           </div>
         </div>
       </header>
@@ -109,13 +136,35 @@ export default function LoginPage() {
             </span>
           </h1>
 
-          <button onClick={redirectToLogin} className="group px-10 md:px-12 py-4 md:py-5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xl md:text-2xl font-bold rounded-2xl shadow-2xl hover:shadow-orange-500/50 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 relative overflow-hidden">
+          <button onClick={handleStartPlaying} className="group px-10 md:px-12 py-4 md:py-5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xl md:text-2xl font-bold rounded-2xl shadow-2xl hover:shadow-orange-500/50 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 relative overflow-hidden">
             <span className="relative z-10 flex items-center gap-2 justify-center">
               Start playing now
               <Sparkles className="w-6 h-6 group-hover:rotate-12 transition-transform" />
             </span>
             <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           </button>
+          {loginError ? (
+            <p className="mt-4 text-sm text-red-600 font-medium">{loginError}</p>
+          ) : null}
+          <div className="mt-4 max-w-md mx-auto bg-white/75 rounded-2xl p-4 border border-orange-100 shadow">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Or sign in with magic link</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="flex-1 rounded-xl border border-orange-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              />
+              <button
+                onClick={handleMagicLinkSignIn}
+                className="px-4 py-2 bg-white border border-orange-300 text-orange-700 rounded-xl text-sm font-semibold hover:bg-orange-50"
+              >
+                Email me link
+              </button>
+            </div>
+            {magicLinkMessage ? <p className="mt-2 text-sm text-green-700">{magicLinkMessage}</p> : null}
+          </div>
           
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 md:gap-6 text-xs md:text-sm text-gray-600">
             <span className="flex items-center gap-1.5">

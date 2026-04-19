@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { OG_IMAGE_URL } from "@/react-app/lib/site";
 
 interface Question {
   id: number;
@@ -43,7 +44,7 @@ export default function QuizSchema({ quiz }: QuizSchemaProps) {
       "timeRequired": timeRequired,
       "inLanguage": "es-ES",
       "assesses": assesses,
-      "image": "https://019b272f-a125-73ff-b876-e31472c7c4fa.mochausercontent.com/Open-Graph-(Home-1200).jpg"
+      "image": OG_IMAGE_URL
     };
 
     // Create script element

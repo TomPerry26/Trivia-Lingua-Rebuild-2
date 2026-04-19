@@ -1,7 +1,7 @@
 // Service Worker for Trivia Lingua
 // Cache static assets for faster loads, use network for API data
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v3-auth-flow-2026-04-18';
 const STATIC_CACHE = `trivia-lingua-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `trivia-lingua-runtime-${CACHE_VERSION}`;
 
@@ -78,8 +78,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.jpg') ||
     url.pathname.endsWith('.jpeg') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.webp') ||
-    url.pathname.includes('mochausercontent.com')
+    url.pathname.endsWith('.webp')
   ) {
     event.respondWith(
       caches.match(request)

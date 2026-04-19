@@ -3,13 +3,14 @@ interface UserData {
 }
 import { ReactNode, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
-import { useAuth } from "@getmocha/users-service/react";
+import { useAuth } from "@/react-app/contexts/AuthContext";
 import { Home, BookOpen, BarChart3, User as UserIcon, LogOut, Edit2, PieChart, Mail, MessageCircle, List, Database, Eye, Target } from "lucide-react";
 import { useProgressQuery } from "@/react-app/hooks/useProgressQuery";
 import EmailOptInModal from "@/react-app/components/EmailOptInModal";
 import GoalReachedModal from "@/react-app/components/GoalReachedModal";
 import LevelReachedModal from "@/react-app/components/LevelReachedModal";
 import { getGuestProgress, updateGuestDailyTarget } from "@/react-app/lib/guestProgress";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 interface LayoutProps {
   children: ReactNode;
 }
@@ -18,7 +19,7 @@ export default function Layout({
 }: LayoutProps) {
   const {
     user,
-    logout,
+    signOut,
     redirectToLogin
   } = useAuth();
   const location = useLocation();
@@ -68,7 +69,7 @@ export default function Layout({
     }
   };
   const handleLogout = async () => {
-    await logout();
+    await signOut();
   };
   const handleEditTarget = () => {
     const currentTarget = user ? progress?.daily_target || 1000 : guestProgress?.dailyTarget || 1000;
@@ -106,7 +107,7 @@ export default function Layout({
   // Check if user is admin
   useEffect(() => {
     if (user) {
-      fetch('/api/users/me')
+      fetchWithSupabaseAuth('/api/users/me')
         .then(res => res.ok ? res.json() : null)
         .then((data: UserData | null) => {
           if (data?.access_level === 'beta') {
