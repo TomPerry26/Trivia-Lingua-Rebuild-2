@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import type { HomeData } from "@/shared/types";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 async function fetchHomeData(): Promise<HomeData> {
-  const response = await fetch("/api/home-data");
+  const response = await fetchWithSupabaseAuth("/api/home-data");
   if (!response.ok) {
     throw new Error("Failed to fetch home data");
   }
