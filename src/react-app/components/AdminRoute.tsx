@@ -1,4 +1,5 @@
 import { useAuth } from "@/react-app/contexts/AuthContext";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 import { Navigate } from "react-router";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -23,7 +24,7 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
 
     // User is logged in, check if admin
     setIsChecking(true);
-    fetch("/api/users/me")
+    fetchWithSupabaseAuth("/api/users/me")
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         setIsAdmin(data?.access_level === "beta");

@@ -2,12 +2,17 @@
  * Shared types between client and server
  */
 
+export type EntitlementTier = "free" | "pro" | "trial";
+
 // Quiz-related types
 export interface Quiz {
   id: number;
   title: string;
   difficulty: string;
   status?: string;
+  min_access_level?: string | null;
+  visibility_tier?: string | null;
+  access_required?: string | null;
   quiz_id?: string;
   topics?: string[];
   total_word_count?: number;
@@ -58,4 +63,17 @@ export interface HomeRowData {
 export interface HomeData {
   latestQuizzes: Quiz[];
   homeRows: HomeRowData[];
+}
+
+export interface UserIdentity {
+  id: string;
+  email: string | null;
+}
+
+export interface UserEntitlementState {
+  tier: EntitlementTier;
+  source: "default-free" | "user_entitlements" | "profiles";
+  trialEndsAt: string | null;
+  currentPeriodEndsAt: string | null;
+  updatedAt: string | null;
 }

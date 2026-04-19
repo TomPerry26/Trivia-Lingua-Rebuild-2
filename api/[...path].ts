@@ -1,7 +1,9 @@
 import { listAdminFeedback, listAdminMessages, listBlogPosts, listTopics } from "../src/server/queries.js";
 import { jsonError, jsonOk, methodNotAllowed } from "../src/server/response.js";
-import { supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
+import { createSupabaseUserClient, supabaseAdmin, supabaseAnon } from "../src/server/supabase.js";
+import { getUserEntitlement, requireEntitlement } from "../src/server/entitlements.js";
 import { getDifficultyBySlug } from "../src/data/difficulties.js";
+import { canFetchQuiz, getAccessRequired, getQuizVisibilityTier } from "../src/shared/quiz-access.js";
 
 export const config = {
   runtime: "edge",
@@ -33,6 +35,27 @@ const getAuthToken = (req: Request): string | null => {
   return null;
 };
 
+const authLog = ({
+  event,
+  outcome,
+  details,
+}: {
+  event: string;
+  outcome: "attempt" | "success" | "failure";
+  details?: Record<string, unknown>;
+}) => {
+  console.info(
+    JSON.stringify({
+      scope: "auth",
+      stage: "users_me",
+      event,
+      outcome,
+      ts: new Date().toISOString(),
+      ...(details ? { details } : {}),
+    }),
+  );
+};
+
 type QuizBase = {
   id: number;
   title: string;
@@ -42,6 +65,21 @@ type QuizBase = {
   min_access_level?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type AuthContext = {
+  identity: {
+    isAuthenticated: boolean;
+    userId: string | null;
+  };
+  entitlement: Awaited<ReturnType<typeof getUserEntitlement>>;
+};
+
+const getAuthenticatedUser = async (req: Request) => {
+  const token = getAuthToken(req);
+  if (!token) return { token: null, user: null };
+  const userRes = await supabaseAnon.auth.getUser(token);
+  return { token, user: userRes.data.user ?? null, userError: userRes.error };
 };
 
 const enrichQuizzes = async (quizzes: QuizBase[]) => {
@@ -103,6 +141,15 @@ const enrichQuizzes = async (quizzes: QuizBase[]) => {
   }));
 };
 
+const withAccessContract = (quiz: QuizBase, auth: AuthContext) => {
+  const visibilityTier = getQuizVisibilityTier(quiz);
+  return {
+    ...quiz,
+    visibility_tier: visibilityTier,
+    access_required: getAccessRequired(quiz, auth.identity.isAuthenticated),
+  };
+};
+
 const fallbackDifficultyContent = (slug: string) => {
   const difficulty = getDifficultyBySlug(slug);
   if (!difficulty) return null;
@@ -125,6 +172,28 @@ const fallbackDifficultyContent = (slug: string) => {
 export default async function handler(req: Request): Promise<Response> {
   try {
     const path = getPath(req);
+    let authContextPromise: Promise<AuthContext> | null = null;
+    const getAuthContext = async (): Promise<AuthContext> => {
+      if (!authContextPromise) {
+        authContextPromise = (async () => {
+          const token = getAuthToken(req);
+          if (!token) {
+            return {
+              identity: { isAuthenticated: false, userId: null },
+              entitlement: await getUserEntitlement(null),
+            };
+          }
+          const userRes = await supabaseAnon.auth.getUser(token);
+          const user = userRes.data.user;
+          const userId = user?.id ?? null;
+          return {
+            identity: { isAuthenticated: Boolean(user), userId },
+            entitlement: await getUserEntitlement(userId),
+          };
+        })();
+      }
+      return authContextPromise;
+    };
 
   if (path === "topics") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
@@ -147,6 +216,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "home-data") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
     const HOME_ROW_QUIZ_LIMIT = 12;
+    const auth = await getAuthContext();
 
     const [latestRes, rowsRes] = await Promise.all([
       supabaseAdmin
@@ -165,7 +235,7 @@ export default async function handler(req: Request): Promise<Response> {
     const enrichedLatest = await enrichQuizzes((latestRes.data ?? []) as QuizBase[]);
 
     const homeRowQuizResults = await Promise.all(
-      rows.map((row) => {
+      rows.map(() => {
         return supabaseAdmin
           .from("quizzes")
           .select("id, title, difficulty, status, topic, min_access_level, created_at, updated_at")
@@ -192,13 +262,17 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     return jsonOk({
-      latestQuizzes: enrichedLatest,
-      homeRows: rows.map((row, index) => ({ row, quizzes: enrichedRows[index] ?? [] })),
+      latestQuizzes: enrichedLatest.map((quiz) => withAccessContract(quiz, auth)),
+      homeRows: rows.map((row, index) => ({
+        row,
+        quizzes: (enrichedRows[index] ?? []).map((quiz) => withAccessContract(quiz, auth)),
+      })),
     });
   }
 
   if (path === "quizzes/paginated" || path === "quizzes/paginated/" || path === "quizzes") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const auth = await getAuthContext();
 
     const url = new URL(req.url, "http://localhost");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "24") || 24, 1), 100);
@@ -271,7 +345,7 @@ export default async function handler(req: Request): Promise<Response> {
       const paginated = await enrichQuizzes(paginatedBase);
 
       return jsonOk({
-        quizzes: paginated,
+        quizzes: paginated.map((quiz) => withAccessContract(quiz, auth)),
         total: sortedBase.length,
         limit,
         offset,
@@ -289,7 +363,7 @@ export default async function handler(req: Request): Promise<Response> {
     const paginated = await enrichQuizzes(paginatedBase);
 
     return jsonOk({
-      quizzes: paginated,
+      quizzes: paginated.map((quiz) => withAccessContract(quiz, auth)),
       total: sortedBase.length,
       limit,
       offset,
@@ -301,6 +375,7 @@ export default async function handler(req: Request): Promise<Response> {
   const quizByIdMatch = path.match(/^quizzes\/([^/]+)$/);
   if (quizByIdMatch || quizIdFromQuery) {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    const auth = await getAuthContext();
 
     const quizId = decodeURIComponent(quizIdFromQuery ?? quizByIdMatch?.[1] ?? "");
     if (!quizId) return jsonError("quiz_id is required", 400);
@@ -324,10 +399,20 @@ export default async function handler(req: Request): Promise<Response> {
     if (!quizRes.data) return jsonError("Quiz not found", 404);
     if (questionsRes.error) return jsonError("Failed to fetch quiz questions", 500, questionsRes.error);
     const [enrichedQuiz] = await enrichQuizzes([quizRes.data as QuizBase]);
+    const quizWithAccess = withAccessContract(enrichedQuiz, auth);
+
+    if (!canFetchQuiz(enrichedQuiz, auth.identity.isAuthenticated)) {
+      return jsonOk({
+        ...quizWithAccess,
+        is_locked: true,
+        topic: quizWithAccess.topic ?? (Array.isArray(quizWithAccess.topics) ? quizWithAccess.topics[0] : ""),
+        questions: [],
+      });
+    }
 
     return jsonOk({
-      ...enrichedQuiz,
-      topic: enrichedQuiz.topic ?? (Array.isArray(enrichedQuiz.topics) ? enrichedQuiz.topics[0] : ""),
+      ...quizWithAccess,
+      topic: quizWithAccess.topic ?? (Array.isArray(quizWithAccess.topics) ? quizWithAccess.topics[0] : ""),
       questions: questionsRes.data ?? [],
     });
   }
@@ -343,12 +428,11 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonError("score and words_read are required", 400);
     }
 
-    const token = getAuthToken(req);
-    if (!token) return jsonError("Authentication required", 401);
-
-    const userRes = await supabaseAnon.auth.getUser(token);
-    const user = userRes.data.user;
-    if (!user) return jsonError("Authentication required", 401, userRes.error);
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -375,8 +459,8 @@ export default async function handler(req: Request): Promise<Response> {
     };
 
     const [attemptRes, completionRes, incrementCompletionRes] = await Promise.all([
-      supabaseAdmin.from("quiz_attempts").insert(attemptPayload),
-      supabaseAdmin
+      supabaseUser.from("quiz_attempts").insert(attemptPayload),
+      supabaseUser
         .from("quiz_completions")
         .upsert({ user_id: user.id, quiz_id: quizId, completed_at: new Date().toISOString() }, { onConflict: "user_id,quiz_id" }),
       supabaseAdmin.rpc("increment_quiz_completions", { p_quiz_id: quizId }),
@@ -389,7 +473,7 @@ export default async function handler(req: Request): Promise<Response> {
       await supabaseAdmin.rpc("increment", { table_name: "quizzes", row_id: quizId, column_name: "completions", by_amount: 1 });
     }
 
-    const progressRes = await supabaseAdmin
+    const progressRes = await supabaseUser
       .from("user_progress")
       .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
       .eq("user_id", user.id)
@@ -417,7 +501,7 @@ export default async function handler(req: Request): Promise<Response> {
     const dailyTarget = prior.daily_target ?? 1000;
     const goalReached = dailyWordsRead >= dailyTarget && (prior.daily_words_read ?? 0) < dailyTarget;
 
-    const progressUpsert = await supabaseAdmin.from("user_progress").upsert(
+    const progressUpsert = await supabaseUser.from("user_progress").upsert(
       {
         user_id: user.id,
         daily_words_read: dailyWordsRead,
@@ -458,6 +542,14 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!body?.guest_session_id || typeof body.score !== "number" || typeof body.words_read !== "number") {
       return jsonError("guest_session_id, score, and words_read are required", 400);
+    }
+
+    const quizRes = await supabaseAdmin.from("quizzes").select("id, min_access_level").eq("id", quizId).maybeSingle();
+    if (quizRes.error || !quizRes.data) return jsonError("Quiz not found", 404, quizRes.error);
+    if (!canFetchQuiz(quizRes.data, false)) {
+      return jsonError("Sign up required for this quiz", 403, {
+        access_required: getAccessRequired(quizRes.data, false),
+      });
     }
 
     const insertRes = await supabaseAdmin.from("guest_quiz_attempts").insert({
@@ -561,7 +653,6 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "external-reading") {
     if (req.method !== "POST") return methodNotAllowed(req.method, ["POST"]);
     const body = (await req.json().catch(() => null)) as {
-      user_id?: string;
       words_read?: number;
       source_type?: string;
       details?: string;
@@ -572,9 +663,16 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonError("words_read, source_type, and reading_date are required", 400);
     }
 
-    if (!body.user_id) return jsonOk({ success: true }, 201);
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
-    const { error } = await supabaseAdmin.from("external_reading_logs").insert(body);
+    const { error } = await supabaseUser.from("external_reading_logs").insert({
+      ...body,
+      user_id: user.id,
+    });
     if (error) return jsonError("Failed to save external reading", 500, error);
 
     return jsonOk({ success: true }, 201);
@@ -608,17 +706,58 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (path === "users/me") {
     if (req.method !== "GET") return methodNotAllowed(req.method, ["GET"]);
+    authLog({
+      event: "users_me_handler_started",
+      outcome: "attempt",
+    });
 
     const token = getAuthToken(req);
-    if (!token) return jsonOk({ access_level: null });
+    if (!token) {
+      authLog({
+        event: "users_me_guest_response",
+        outcome: "success",
+        details: { hasToken: false },
+      });
+      return jsonOk({
+        access_level: null,
+        identity: null,
+        entitlement: await getUserEntitlement(null),
+      });
+    }
 
     const { data } = await supabaseAnon.auth.getUser(token);
-    if (!data.user) return jsonOk({ access_level: null });
+    if (!data.user) {
+      authLog({
+        event: "users_me_invalid_token",
+        outcome: "failure",
+        details: { hasToken: true },
+      });
+      return jsonOk({
+        access_level: null,
+        identity: null,
+        entitlement: await getUserEntitlement(null),
+      });
+    }
+
+    const entitlement = await getUserEntitlement(data.user.id);
+    authLog({
+      event: "users_me_authenticated_response",
+      outcome: "success",
+      details: {
+        hasToken: true,
+        userId: data.user.id,
+      },
+    });
 
     return jsonOk({
       id: data.user.id,
       email: data.user.email,
       access_level: data.user.user_metadata?.access_level ?? null,
+      identity: {
+        id: data.user.id,
+        email: data.user.email ?? null,
+      },
+      entitlement,
     });
   }
 
@@ -627,8 +766,8 @@ export default async function handler(req: Request): Promise<Response> {
 
     const url = new URL(req.url, "http://localhost");
     const localDate = url.searchParams.get("local_date") ?? new Date().toISOString().slice(0, 10);
-    const token = getAuthToken(req);
-    if (!token) {
+    const { token, user } = await getAuthenticatedUser(req);
+    if (!token || !user) {
       return jsonOk({
         daily_words_read: 0,
         total_words_read: 0,
@@ -642,29 +781,15 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    const userRes = await supabaseAnon.auth.getUser(token);
-    const user = userRes.data.user;
-    if (!user) {
-      return jsonOk({
-        daily_words_read: 0,
-        total_words_read: 0,
-        current_streak: 0,
-        longest_streak: 0,
-        total_quizzes_completed: 0,
-        daily_target: 1000,
-        last_activity_date: null,
-        quiz_words: 0,
-        external_words: 0,
-      });
-    }
+    const supabaseUser = createSupabaseUserClient(token);
 
     const [progressRes, externalRes] = await Promise.all([
-      supabaseAdmin
+      supabaseUser
         .from("user_progress")
         .select("daily_words_read, total_words_read, current_streak, longest_streak, total_quizzes_completed, daily_target, last_activity_date")
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabaseAdmin
+      supabaseUser
         .from("external_reading_logs")
         .select("words_read")
         .eq("user_id", user.id)
@@ -695,13 +820,17 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "progress/email-opt-in") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
-    const body = (await req.json().catch(() => null)) as { user_id?: string; email_opt_in?: boolean } | null;
+    const body = (await req.json().catch(() => null)) as { email_opt_in?: boolean } | null;
     if (typeof body?.email_opt_in !== "boolean") return jsonError("email_opt_in is required", 400);
-    if (!body.user_id) return jsonOk({ success: true });
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
-    const { error } = await supabaseAdmin
+    const { error } = await supabaseUser
       .from("user_progress")
-      .upsert({ user_id: body.user_id, email_opt_in: body.email_opt_in }, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, email_opt_in: body.email_opt_in }, { onConflict: "user_id" });
 
     if (error) return jsonError("Failed to update email opt-in", 500, error);
     return jsonOk({ success: true });
@@ -710,13 +839,18 @@ export default async function handler(req: Request): Promise<Response> {
   if (path === "progress/target") {
     if (req.method !== "PATCH") return methodNotAllowed(req.method, ["PATCH"]);
 
-    const body = (await req.json().catch(() => null)) as { user_id?: string; daily_target?: number } | null;
-    if (typeof body?.daily_target !== "number") return jsonError("daily_target is required", 400);
-    if (!body.user_id) return jsonOk({ success: true });
+    const { token, user, userError } = await getAuthenticatedUser(req);
+    if (!token || !user) return jsonError("Authentication required", 401, userError);
+    const entitlementCheck = await requireEntitlement({ userId: user.id, allowedTiers: ["free", "trial", "pro"] });
+    if (!entitlementCheck.allowed) return jsonError("Entitlement required", 403);
+    const supabaseUser = createSupabaseUserClient(token);
 
-    const { error } = await supabaseAdmin
+    const body = (await req.json().catch(() => null)) as { daily_target?: number } | null;
+    if (typeof body?.daily_target !== "number") return jsonError("daily_target is required", 400);
+
+    const { error } = await supabaseUser
       .from("user_progress")
-      .upsert({ user_id: body.user_id, daily_target: body.daily_target }, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, daily_target: body.daily_target }, { onConflict: "user_id" });
 
     if (error) return jsonError("Failed to update progress target", 500, error);
     return jsonOk({ success: true });

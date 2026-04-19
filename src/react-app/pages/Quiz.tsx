@@ -11,8 +11,17 @@ import AccessGate from "../components/AccessGate";
 import { hasAccess, type AccessLevel } from "@/shared/access-levels";
 import { updateGuestProgress } from "@/react-app/lib/guestProgress";
 import { extractIdFromSlug, buildQuizUrl } from "@/shared/slug-utils";
-import { supabase } from "@/react-app/lib/supabase";
 import { OG_IMAGE_URL, SITE_URL } from "@/react-app/lib/site";
+
+async function fetchWithSupabaseAuthLazy(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    const { fetchWithSupabaseAuth } = await import("@/react-app/lib/fetchWithSupabaseAuth");
+    return await fetchWithSupabaseAuth(input, init);
+  } catch (error) {
+    console.warn("Supabase auth fetch unavailable, falling back to fetch without auth header.", error);
+    return fetch(input, init);
+  }
+}
 
 // Helper to get or create guest session ID
 function getGuestSessionId(): string {
@@ -24,21 +33,6 @@ function getGuestSessionId(): string {
     localStorage.setItem(storageKey, sessionId);
   }
   return sessionId;
-}
-
-async function fetchWithSupabaseAuth(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const headers = new Headers(init?.headers);
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  return fetch(input, {
-    ...init,
-    headers,
-  });
 }
 
 interface Question {
@@ -63,6 +57,9 @@ interface Quiz {
   topic: string;
   difficulty: string;
   min_access_level: AccessLevel;
+  visibility_tier?: AccessLevel;
+  access_required?: AccessLevel | null;
+  is_locked?: boolean;
   questions: Question[];
 }
 
@@ -99,7 +96,7 @@ export default function QuizPage() {
         // Get user's access level
         let accessLevel: AccessLevel = 'guest';
         if (user) {
-          const profileResponse = await fetchWithSupabaseAuth('/api/users/me');
+          const profileResponse = await fetchWithSupabaseAuthLazy('/api/users/me');
           if (profileResponse.ok) {
             const profileData = await profileResponse.json();
             accessLevel = profileData.access_level || 'member';
@@ -114,13 +111,16 @@ export default function QuizPage() {
           return;
         }
 
-        const quizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
+        const quizResponse = user
+          ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`)
+          : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(quizId)}`);
         if (quizResponse.ok) {
           const quizData = await quizResponse.json();
           setQuiz(quizData);
           
           // Check if user has access to this quiz
-          const canAccess = hasAccess(accessLevel, quizData.min_access_level);
+          const requiredAccess = quizData.access_required;
+          const canAccess = !requiredAccess && hasAccess(accessLevel, quizData.min_access_level);
           setHasQuizAccess(canAccess);
         }
       } catch (error) {
@@ -204,7 +204,7 @@ export default function QuizPage() {
     if (user) {
       // Authenticated user - use the authenticated endpoint
       try {
-        const response = await fetch(`/api/quizzes/${quizId}/complete`, {
+        const response = await fetchWithSupabaseAuthLazy(`/api/quizzes/${quizId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -220,7 +220,9 @@ export default function QuizPage() {
           // Fetch next quiz title if available
           if (data.nextQuizId) {
             try {
-              const nextQuizResponse = await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
+              const nextQuizResponse = user
+                ? await fetchWithSupabaseAuthLazy(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`)
+                : await fetch(`/api/quiz?quiz_id=${encodeURIComponent(String(data.nextQuizId))}`);
               if (nextQuizResponse.ok) {
                 const nextQuizData = await nextQuizResponse.json();
                 setNextQuizTitle(nextQuizData.title);

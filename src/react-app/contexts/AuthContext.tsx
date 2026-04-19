@@ -1,14 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session, User } from "../../shared/supabase-client";
+import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
+import { authTelemetry } from "@/react-app/lib/authTelemetry";
 
-type SignInProvider = string;
-const DEFAULT_OAUTH_PROVIDER = import.meta.env.VITE_SUPABASE_OAUTH_PROVIDER || "google";
+type SignInProvider = "google";
 
 interface AuthContextValue {
   user: User | null;
   isPending: boolean;
-  signIn: (provider?: SignInProvider) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithMagicLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   redirectToLogin: () => Promise<void>;
 }
@@ -26,16 +27,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!isMounted) return;
-        setUser(data.session?.user ?? null);
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setIsPending(false);
+    const bootstrapSession = async () => {
+      authTelemetry.info({
+        stage: "start",
+        event: "session_bootstrap_started",
+        outcome: "attempt",
       });
+      const { data } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      setUser(data.session?.user ?? null);
+      setIsPending(false);
+      authTelemetry.info({
+        stage: "session_ready",
+        event: "session_bootstrap_completed",
+        outcome: "success",
+        details: {
+          hasUser: Boolean(data.session?.user),
+        },
+      });
+    };
+
+    void bootstrapSession();
 
     const {
       data: { subscription },
@@ -43,6 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       setUser(session?.user ?? null);
       setIsPending(false);
+      authTelemetry.info({
+        stage: "session_ready",
+        event: "auth_state_changed",
+        outcome: "success",
+        details: {
+          hasUser: Boolean(session?.user),
+        },
+      });
     });
 
     return () => {
@@ -51,17 +71,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (provider: SignInProvider = DEFAULT_OAUTH_PROVIDER) => {
+  const signInWithGoogle = useCallback(async () => {
+    authTelemetry.info({
+      stage: "start",
+      event: "google_sign_in_started",
+      outcome: "attempt",
+    });
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: "google" as SignInProvider,
       options: {
         redirectTo: getCallbackUrl(),
       },
     });
 
     if (error) {
+      authTelemetry.error({
+        stage: "redirect",
+        event: "google_sign_in_failed",
+        outcome: "failure",
+        details: { message: error.message },
+      });
       throw error;
     }
+
+    authTelemetry.info({
+      stage: "redirect",
+      event: "google_redirect_initiated",
+      outcome: "success",
+      details: { redirectTo: getCallbackUrl() },
+    });
+  }, []);
+
+  const signInWithMagicLink = useCallback(async (email: string) => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      throw new Error("Email is required.");
+    }
+
+    authTelemetry.info({
+      stage: "start",
+      event: "magic_link_sign_in_started",
+      outcome: "attempt",
+      details: { emailDomain: normalizedEmail.split("@")[1] ?? null },
+    });
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: getCallbackUrl(),
+      },
+    });
+
+    if (error) {
+      authTelemetry.error({
+        stage: "redirect",
+        event: "magic_link_send_failed",
+        outcome: "failure",
+        details: { message: error.message },
+      });
+      throw error;
+    }
+
+    authTelemetry.info({
+      stage: "redirect",
+      event: "magic_link_sent",
+      outcome: "success",
+      details: { emailDomain: normalizedEmail.split("@")[1] ?? null },
+    });
   }, []);
 
   const signOut = useCallback(async () => {
@@ -72,12 +147,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback(async () => {
-    await signIn(DEFAULT_OAUTH_PROVIDER);
-  }, [signIn]);
+    await signInWithGoogle();
+  }, [signInWithGoogle]);
 
   const value = useMemo(
-    () => ({ user, isPending, signIn, signOut, redirectToLogin }),
-    [user, isPending, signIn, signOut, redirectToLogin],
+    () => ({ user, isPending, signInWithGoogle, signInWithMagicLink, signOut, redirectToLogin }),
+    [user, isPending, signInWithGoogle, signInWithMagicLink, signOut, redirectToLogin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -17,11 +17,14 @@ export default function LoginPage() {
   const {
     user,
     redirectToLogin,
+    signInWithMagicLink,
     isPending
   } = useAuth();
   const navigate = useNavigate();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [magicLinkMessage, setMagicLinkMessage] = useState<string | null>(null);
   const [currentTopicIndex, setCurrentTopicIndex] = useState(0);
   const topics = ["Harry Potter", "Marvel", "Taylor Swift", "Star Wars", "Geography", "Music", "Film", "Sport", "Star Trek", "History", "Batman", "Food", "Culture", "Pokemon", "Animals"];
   useEffect(() => {
@@ -58,10 +61,23 @@ export default function LoginPage() {
   };
   const handleStartPlaying = async () => {
     setLoginError(null);
+    setMagicLinkMessage(null);
     try {
       await redirectToLogin();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start OAuth login.";
+      setLoginError(message);
+    }
+  };
+  const handleMagicLinkSignIn = async () => {
+    setLoginError(null);
+    setMagicLinkMessage(null);
+
+    try {
+      await signInWithMagicLink(email);
+      setMagicLinkMessage("Check your email for a secure sign-in link.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to send magic-link email.";
       setLoginError(message);
     }
   };
@@ -130,6 +146,25 @@ export default function LoginPage() {
           {loginError ? (
             <p className="mt-4 text-sm text-red-600 font-medium">{loginError}</p>
           ) : null}
+          <div className="mt-4 max-w-md mx-auto bg-white/75 rounded-2xl p-4 border border-orange-100 shadow">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Or sign in with magic link</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="flex-1 rounded-xl border border-orange-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              />
+              <button
+                onClick={handleMagicLinkSignIn}
+                className="px-4 py-2 bg-white border border-orange-300 text-orange-700 rounded-xl text-sm font-semibold hover:bg-orange-50"
+              >
+                Email me link
+              </button>
+            </div>
+            {magicLinkMessage ? <p className="mt-2 text-sm text-green-700">{magicLinkMessage}</p> : null}
+          </div>
           
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 md:gap-6 text-xs md:text-sm text-gray-600">
             <span className="flex items-center gap-1.5">

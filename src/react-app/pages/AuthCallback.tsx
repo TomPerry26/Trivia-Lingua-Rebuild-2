@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
+import { authTelemetry } from "@/react-app/lib/authTelemetry";
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -10,48 +12,123 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const callbackUrl = window.location.href;
         const searchParams = new URLSearchParams(window.location.search);
         const callbackError = searchParams.get("error");
         const callbackErrorDescription = searchParams.get("error_description");
+        authTelemetry.info({
+          stage: "callback",
+          event: "callback_received",
+          outcome: "attempt",
+        });
+
         if (callbackError) {
+          authTelemetry.error({
+            stage: "callback",
+            event: "callback_error_param",
+            outcome: "failure",
+            details: {
+              callbackError,
+              callbackErrorDescription,
+            },
+          });
           throw new Error(callbackErrorDescription || callbackError);
         }
 
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-        const hasTokenHash = hashParams.has("access_token") && hashParams.has("refresh_token");
+        const code = searchParams.get("code");
+        const tokenHash = searchParams.get("token_hash");
+        const otpType = searchParams.get("type") as EmailOtpType | null;
 
-        if (hasTokenHash) {
-          const access_token = hashParams.get("access_token");
-          const refresh_token = hashParams.get("refresh_token");
-
-          if (!access_token || !refresh_token) {
-            throw new Error("Missing authentication tokens in callback URL.");
-          }
-
-          const { error: setSessionError } = await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-
-          if (setSessionError) {
-            throw setSessionError;
-          }
-        } else {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
+            authTelemetry.error({
+              stage: "callback",
+              event: "token_exchange_failed",
+              outcome: "failure",
+              details: { message: exchangeError.message },
+            });
             throw exchangeError;
           }
+          authTelemetry.info({
+            stage: "callback",
+            event: "token_exchange_succeeded",
+            outcome: "success",
+          });
+        } else if (tokenHash && otpType) {
+          authTelemetry.info({
+            stage: "callback",
+            event: "otp_verify_started",
+            outcome: "attempt",
+          });
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
+
+          if (verifyError) {
+            authTelemetry.error({
+              stage: "callback",
+              event: "magic_link_verify_failed",
+              outcome: "failure",
+              details: { message: verifyError.message },
+            });
+            throw verifyError;
+          }
+          authTelemetry.info({
+            stage: "callback",
+            event: "magic_link_verify_succeeded",
+            outcome: "success",
+          });
+        } else {
+          authTelemetry.error({
+            stage: "callback",
+            event: "callback_payload_unsupported",
+            outcome: "failure",
+            details: { hasCode: Boolean(code), hasTokenHash: Boolean(tokenHash), hasOtpType: Boolean(otpType) },
+          });
+          throw new Error("Unsupported authentication callback payload.");
         }
 
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          authTelemetry.error({
+            stage: "session_ready",
+            event: "session_lookup_failed",
+            outcome: "failure",
+            details: { message: sessionError.message },
+          });
+          throw sessionError;
+        }
+
+        if (!sessionData.session?.user) {
+          authTelemetry.error({
+            stage: "session_ready",
+            event: "session_user_missing",
+            outcome: "failure",
+          });
+          throw new Error("Authentication completed but no user session was found.");
+        }
+
+        window.history.replaceState({}, document.title, "/auth/callback");
+        authTelemetry.info({
+          stage: "session_ready",
+          event: "callback_completed",
+          outcome: "success",
+        });
         navigate("/", { replace: true });
       } catch (err) {
         console.error("Authentication error:", err);
+        authTelemetry.error({
+          stage: "callback",
+          event: "callback_failed",
+          outcome: "failure",
+          details: { message: err instanceof Error ? err.message : "unknown callback error" },
+        });
         setError(err instanceof Error ? err.message : "Authentication failed. Please try again.");
       }
     };
 
-    handleCallback();
+    void handleCallback();
   }, [navigate]);
 
   if (error) {

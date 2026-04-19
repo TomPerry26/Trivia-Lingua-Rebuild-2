@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@/react-app/index.css";
 import App from "@/react-app/App.tsx";
+import RootErrorBoundary from "@/react-app/components/RootErrorBoundary.tsx";
 
 // Migrate legacy hash-based URLs (/#/path) to BrowserRouter paths (/path)
 if (window.location.hash.startsWith("#/")) {
@@ -55,6 +56,8 @@ window.addEventListener('load', () => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <RootErrorBoundary>
+      <App />
+    </RootErrorBoundary>
   </StrictMode>
 );

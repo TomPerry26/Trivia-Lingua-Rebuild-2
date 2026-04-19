@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { UserProgress } from "@/shared/types";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 function getLocalDate(): string {
   const now = new Date();
@@ -8,7 +9,7 @@ function getLocalDate(): string {
 
 async function fetchProgress(): Promise<UserProgress> {
   const localDate = getLocalDate();
-  const response = await fetch(`/api/progress?local_date=${localDate}`);
+  const response = await fetchWithSupabaseAuth(`/api/progress?local_date=${localDate}`);
   if (!response.ok) {
     throw new Error("Failed to fetch progress");
   }
@@ -16,7 +17,7 @@ async function fetchProgress(): Promise<UserProgress> {
 }
 
 async function updateTarget(newTarget: number): Promise<void> {
-  const response = await fetch("/api/progress/target", {
+  const response = await fetchWithSupabaseAuth("/api/progress/target", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ daily_target: newTarget }),
