@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/react-app/lib/supabase";
 import { authTelemetry } from "@/react-app/lib/authTelemetry";
+import { queryClient } from "@/react-app/lib/queryClient";
 
 type SignInProvider = "google";
 
@@ -55,6 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       setUser(session?.user ?? null);
       setIsPending(false);
+      void queryClient.invalidateQueries({ queryKey: ["quizzes-paginated"] });
+      void queryClient.invalidateQueries({ queryKey: ["home-data"] });
+      void queryClient.invalidateQueries({ queryKey: ["difficulty-quizzes"] });
+      void queryClient.invalidateQueries({ queryKey: ["topic-quizzes"] });
       authTelemetry.info({
         stage: "session_ready",
         event: "auth_state_changed",

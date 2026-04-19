@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { Quiz } from "@/shared/types";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 interface FetchQuizzesParams {
   difficulties: string[];
@@ -33,13 +34,13 @@ async function fetchQuizzes(
   
   queryParams.append("sort", params.sortBy);
   
-  const primaryResponse = await fetch(`/api/quizzes/paginated?${queryParams.toString()}`);
+  const primaryResponse = await fetchWithSupabaseAuth(`/api/quizzes/paginated?${queryParams.toString()}`);
   if (primaryResponse.ok) {
     return primaryResponse.json();
   }
 
   if (primaryResponse.status === 404) {
-    const fallbackResponse = await fetch(`/api/quizzes?${queryParams.toString()}`);
+    const fallbackResponse = await fetchWithSupabaseAuth(`/api/quizzes?${queryParams.toString()}`);
     if (fallbackResponse.ok) {
       return fallbackResponse.json();
     }

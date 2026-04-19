@@ -9,6 +9,7 @@ import RelatedTopics from "@/react-app/components/RelatedTopics";
 import DifficultyLevels from "@/react-app/components/DifficultyLevels";
 import { Link } from "react-router";
 import { useState } from "react";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 interface TopicQuiz {
   id: number;
@@ -69,7 +70,7 @@ export default function TopicPage() {
   const { data: quizzes = [], isLoading } = useQuery<TopicQuiz[]>({
     queryKey: ["topic-quizzes", slug],
     queryFn: async () => {
-      const response = await fetch(`/api/topic/${slug}/quizzes`);
+      const response = await fetchWithSupabaseAuth(`/api/topic/${slug}/quizzes`);
       if (!response.ok) throw new Error("Failed to fetch topic quizzes");
       return response.json();
     },

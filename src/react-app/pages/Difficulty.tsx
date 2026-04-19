@@ -7,6 +7,7 @@ import LazyQuizCard from "@/react-app/components/LazyQuizCard";
 import MoreDifficultyLevels from "@/react-app/components/MoreDifficultyLevels";
 import RelatedTopics from "@/react-app/components/RelatedTopics";
 import { Loader2, BookOpen, Target, TrendingUp, Home } from "lucide-react";
+import { fetchWithSupabaseAuth } from "@/react-app/lib/fetchWithSupabaseAuth";
 
 interface DifficultyContent {
   difficulty: string;
@@ -36,7 +37,7 @@ export default function Difficulty() {
   const { data: quizzesData, isLoading: quizzesLoading } = useQuery({
     queryKey: ["difficulty-quizzes", difficulty?.name],
     queryFn: async () => {
-      const response = await fetch(`/api/quizzes/paginated?difficulties=${difficulty?.name}&limit=100`);
+      const response = await fetchWithSupabaseAuth(`/api/quizzes/paginated?difficulties=${difficulty?.name}&limit=100`);
       if (!response.ok) throw new Error("Failed to fetch quizzes");
       return response.json();
     },
