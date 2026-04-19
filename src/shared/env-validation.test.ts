@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseDeploymentTier, validateSupabaseEnvironment } from "./env-validation.ts";
+import { validateSupabaseEnvironment } from "./env-validation.ts";
 
 const baseOptions = {
   context: "server" as const,
@@ -9,27 +9,10 @@ const baseOptions = {
     ["SUPABASE_URL", "https://example.supabase.co"],
     ["SUPABASE_ANON_KEY", "anon-key"],
   ] as const,
-  supabaseUrl: "https://preview-project.supabase.co",
   supabaseUrlVarName: "SUPABASE_URL",
-  deploymentTier: "preview",
-  deploymentTierSourceName: "DEPLOYMENT_TIER",
-  vercelEnv: "preview",
-  vercelEnvSourceName: "VERCEL_ENV",
-  stagingHost: "preview-project.supabase.co",
-  stagingHostVarName: "SUPABASE_PREVIEW_HOST",
-  productionHost: "prod-project.supabase.co",
-  productionHostVarName: "SUPABASE_PRODUCTION_HOST",
 };
 
-test("parseDeploymentTier normalizes aliases", () => {
-  assert.equal(parseDeploymentTier("preview"), "staging");
-  assert.equal(parseDeploymentTier("STAGING"), "staging");
-  assert.equal(parseDeploymentTier("prod"), "production");
-  assert.equal(parseDeploymentTier("production"), "production");
-  assert.equal(parseDeploymentTier("local"), null);
-});
-
-test("validateSupabaseEnvironment passes for valid staging config", () => {
+test("validateSupabaseEnvironment passes when required variables are present", () => {
   assert.doesNotThrow(() => validateSupabaseEnvironment(baseOptions));
 });
 
@@ -44,24 +27,30 @@ test("validateSupabaseEnvironment fails with uniform missing variable error", ()
   );
 });
 
-test("validateSupabaseEnvironment requires the tier-specific host variable", () => {
+test("validateSupabaseEnvironment includes URL guidance when SUPABASE_URL is missing", () => {
   assert.throws(
     () =>
       validateSupabaseEnvironment({
         ...baseOptions,
-        stagingHost: "",
+        requiredVars: [
+          ["SUPABASE_URL", ""],
+          ["SUPABASE_ANON_KEY", "anon-key"],
+        ],
       }),
-    /Missing required tier variable for staging deployments: SUPABASE_PREVIEW_HOST\./,
+    /Set SUPABASE_URL to a full URL like "https:\/\/<project>\.supabase\.co"\./,
   );
 });
 
-test("validateSupabaseEnvironment catches mismatched tier host", () => {
+test("validateSupabaseEnvironment reports multiple missing variables", () => {
   assert.throws(
     () =>
       validateSupabaseEnvironment({
         ...baseOptions,
-        supabaseUrl: "https://wrong-host.supabase.co",
+        requiredVars: [
+          ["SUPABASE_URL", ""],
+          ["SUPABASE_ANON_KEY", undefined],
+        ],
       }),
-    /Supabase host mismatch for staging tier/,
+    /Missing required variable\(s\): SUPABASE_URL, SUPABASE_ANON_KEY\./,
   );
 });
