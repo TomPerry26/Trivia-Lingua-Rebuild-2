@@ -59,20 +59,13 @@ Do **not** set Supabase credentials as global/shared values. Scope them in Verce
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | staging project URL | production project URL |
 | `VITE_SUPABASE_ANON_KEY` | staging anon key | production anon key |
-| `VITE_SUPABASE_PREVIEW_HOST` | staging host (for example `abc123.supabase.co`) | _unset_ |
-| `VITE_SUPABASE_PRODUCTION_HOST` | _unset_ | production host (for example `xyz789.supabase.co`) |
-| `VITE_SUPABASE_OAUTH_PROVIDER` | `google` | `google` |
-| `VITE_PUBLIC_SITE_URL` | staging public URL | production public URL |
-| `VITE_OG_IMAGE_URL` | optional | optional |
 | `SUPABASE_URL` | staging project URL | production project URL |
 | `SUPABASE_ANON_KEY` | staging anon key | production anon key |
-| `SUPABASE_PREVIEW_HOST` | staging host | _unset_ |
-| `SUPABASE_PRODUCTION_HOST` | _unset_ | production host |
-| `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key (if preview server functions need it) | production service-role key |
+| `SUPABASE_SERVICE_ROLE_KEY` | staging service-role key | production service-role key |
 
-> Tier resolution rule: rely on Vercel environment context (`VERCEL_ENV`) and keep the mapping **Preview → staging** and **Production → production**.
-
-After updating values in Project Settings, trigger fresh deploys for both environments so bundles are rebuilt with the correct `VITE_*` values:
+> Note: legacy tier/host guard environment variables were retired after deployment pipeline stabilization and are no longer required.
+>
+> Reminder: after **any** environment-variable edit in Vercel, redeploy Preview and Production so Vite rebuilds browser bundles with updated `VITE_*` values.
 
 ```bash
 # Preview redeploy (new build using Preview-scoped env vars)
