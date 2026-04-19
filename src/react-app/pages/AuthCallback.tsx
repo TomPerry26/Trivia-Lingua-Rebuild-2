@@ -10,9 +10,20 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const waitForSession = async (attempts = 10, delayMs = 200) => {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (data.session?.user) return data.session;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      return null;
+    };
+
     const handleCallback = async () => {
       try {
         const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const callbackError = searchParams.get("error");
         const callbackErrorDescription = searchParams.get("error_description");
         authTelemetry.info({
@@ -37,6 +48,8 @@ export default function AuthCallbackPage() {
         const code = searchParams.get("code");
         const tokenHash = searchParams.get("token_hash");
         const otpType = searchParams.get("type") as EmailOtpType | null;
+        const hasHashAccessToken = Boolean(hashParams.get("access_token"));
+        const hasHashRefreshToken = Boolean(hashParams.get("refresh_token"));
 
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -80,53 +93,30 @@ export default function AuthCallbackPage() {
             outcome: "success",
           });
         } else {
-          const { data: existingSessionData, error: existingSessionError } = await supabase.auth.getSession();
-          if (existingSessionError) {
-            authTelemetry.error({
-              stage: "session_ready",
-              event: "session_lookup_failed",
-              outcome: "failure",
-              details: { message: existingSessionError.message },
-            });
-            throw existingSessionError;
-          }
-
-          if (existingSessionData.session?.user) {
-            authTelemetry.info({
-              stage: "session_ready",
-              event: "callback_completed_from_existing_session",
-              outcome: "success",
-            });
-            window.history.replaceState({}, document.title, "/auth/callback");
-            navigate("/", { replace: true });
-            return;
-          }
-
-          authTelemetry.error({
+          authTelemetry.warn({
             stage: "callback",
-            event: "callback_payload_unsupported",
-            outcome: "failure",
-            details: { hasCode: Boolean(code), hasTokenHash: Boolean(tokenHash), hasOtpType: Boolean(otpType) },
+            event: "callback_payload_missing",
+            outcome: "attempt",
+            details: {
+              hasCode: Boolean(code),
+              hasTokenHash: Boolean(tokenHash),
+              hasOtpType: Boolean(otpType),
+              hasHashAccessToken,
+              hasHashRefreshToken,
+            },
           });
-          throw new Error("Unsupported authentication callback payload.");
         }
 
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          authTelemetry.error({
-            stage: "session_ready",
-            event: "session_lookup_failed",
-            outcome: "failure",
-            details: { message: sessionError.message },
-          });
-          throw sessionError;
-        }
-
-        if (!sessionData.session?.user) {
+        const session = await waitForSession();
+        if (!session?.user) {
           authTelemetry.error({
             stage: "session_ready",
             event: "session_user_missing",
             outcome: "failure",
+            details: {
+              hasHashAccessToken,
+              hasHashRefreshToken,
+            },
           });
           throw new Error("Authentication completed but no user session was found.");
         }
